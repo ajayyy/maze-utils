@@ -23,6 +23,7 @@ export async function sendRealRequestToCustomServer(type: string, url: string, d
 
     const response = await fetch(url, {
         method: type,
+        credentials: "omit",
         headers: {
             'Content-Type': 'application/json'
         },
