@@ -35,6 +35,8 @@ export async function sendRealRequestToCustomServer(type: string, url: string, d
 
 export function setupBackgroundRequestProxy() {
     chrome.runtime.onMessage.addListener((request, sender, callback) => {
+        // Only allow messages from extension pages.
+        if (sender.origin !== location.origin) return false;
         if (request.message === "sendRequest") {
             sendRealRequestToCustomServer(request.type, request.url, request.data).then(async (response) => {
                 callback({
