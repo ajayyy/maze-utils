@@ -49,6 +49,7 @@ interface VideoModuleParams {
 const embedTitleSelector = "a.ytp-title-link[data-sessionlink='feature=player-title']:not(.cbCustomTitle)";
 
 let video: HTMLVideoElement | null = null;
+let videoWidth: string | null = null;
 let videoMutationObserver: MutationObserver | null = null;
 let videoMutationListenerElement: HTMLElement | null = null;
 // What videos have run through setup so far
@@ -65,6 +66,8 @@ let onMobileYouTube = false;
 let pageType: PageType = PageType.Unknown;
 let channelIDInfo: ChannelIDInfo;
 let waitingForChannelID = false;
+let lastNonInlineVideoID: VideoID | null = null;
+let isInline = false;
 
 let params: VideoModuleParams = {
     videoIDChange: () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
@@ -88,7 +91,7 @@ export function setupVideoModule(moduleParams: VideoModuleParams, config: () => 
     void waitFor(() => getConfig().isReady(), 1000, 1).then(() => videoIDChange(getYouTubeVideoID()));
 
     // Can't use onInvidious at this point, the configuration might not be ready.
-    if (YT_DOMAINS.includes(location.host)) {
+    if (YT_DOMAINS.includes(location.host) && document.URL.includes("/embed/")) {
         waitForElement(embedTitleSelector)
             .then((e) => waitFor(() => e.getAttribute("href")))
             .then(() => videoIDChange(getYouTubeVideoID()))
@@ -141,11 +144,20 @@ export async function checkVideoIDChange(): Promise<boolean> {
     return await videoIDChange(id);
 }
 
-async function videoIDChange(id: VideoID | null): Promise<boolean> {
+export async function triggerVideoIDChange(id: VideoID): Promise<boolean> {
+    return await videoIDChange(id);
+}
+
+async function videoIDChange(id: VideoID | null, isInlineParam = false): Promise<boolean> {
     // don't switch to invalid value
     if (!id && videoID &&
             (params.allowClipPage || !document?.URL?.includes("youtube.com/clip/"))) {
         return false;
+    }
+
+    if (isInlineParam && id) {
+        setTimeout(() => void refreshVideoAttachments(), 200);
+        setTimeout(() => void refreshVideoAttachments(), 1000);
     }
 
     //if the id has not changed return unless the video element has changed
@@ -158,6 +170,7 @@ async function videoIDChange(id: VideoID | null): Promise<boolean> {
 
     resetValues();
     videoID = id;
+    isInline = isInlineParam;
 
 	//id is not valid
     if (!id) return false;
@@ -183,6 +196,7 @@ function resetValues() {
         id: null
     };
     isLivePremiere = false;
+    isInline = false;
 
     isAdPlaying = false;
 
@@ -395,15 +409,38 @@ let waitingForEmbed = false;
 async function refreshVideoAttachments(): Promise<void> {
     if (waitingForNewVideo) return;
 
+    if (!isVisible(video)) video = null;
+
     waitingForNewVideo = true;
     // Compatibility for Vinegar extension
-    const newVideo = (isSafari() && document.querySelector('video[vinegared="true"]') as HTMLVideoElement) 
+    let newVideo = (isSafari() && document.querySelector('video[vinegared="true"]') as HTMLVideoElement) 
         || await waitForElement("video", true) as HTMLVideoElement;
+    let durationChange = false;
+
+    // To handle the case with a paused miniplayer while playing a hover preview
+    const isOnMiniplayer = !!document.querySelector(".miniplayer");
+    if (isOnMiniplayer && newVideo) {
+        const possibleVideos = [...document.querySelectorAll("video")].filter((v) => isVisible(v));
+        if (possibleVideos.length > 1) {
+            const oldDuration = newVideo.duration;
+            const nonMiniplayerVideo = possibleVideos.find((v) => !v.closest(".miniplayer")) as HTMLVideoElement;
+            if (nonMiniplayerVideo) newVideo = nonMiniplayerVideo;
+
+            if (isNaN(newVideo.duration)) {
+                await waitFor(() => !!newVideo.duration, 5000, 50);
+            }
+
+            durationChange = oldDuration !== newVideo.duration;
+        }
+    }
+
     waitingForNewVideo = false;
 
-    if (video === newVideo) return;
+    // Width used because sometimes video element is copied to a new place
+    if (video === newVideo && videoWidth === newVideo.style.width && !durationChange) return;
 
     video = newVideo;
+    videoWidth = newVideo.style.width;
     const isNewVideo = !videosSetup.includes(video);
 
     if (isNewVideo) {
@@ -430,6 +467,18 @@ async function refreshVideoAttachments(): Promise<void> {
     } else {
         void videoIDChange(getYouTubeVideoID());
     }
+}
+
+export function triggerVideoElementChange(newVideo: HTMLVideoElement): void {
+    video = newVideo;
+    videoWidth = newVideo.style.width;
+    const isNewVideo = !videosSetup.includes(video);
+
+    if (isNewVideo) {
+        videosSetup.push(video);
+    }
+
+    params.videoElementChange?.(isNewVideo, video);
 }
 
 function windowListenerHandler(event: MessageEvent): void {
@@ -465,7 +514,11 @@ function windowListenerHandler(event: MessageEvent): void {
             params.updatePlayerBar?.();
         }
     } else if (dataType === "data" && data.videoID) {
-        void videoIDChange(data.videoID);
+        if (!data.isInline) {
+            lastNonInlineVideoID = data.videoID;
+        }
+
+        void videoIDChange(data.videoID, data.isInline);
 
         isLivePremiere = data.isLive || data.isPremiere
     } else if (dataType === "newElement") {
@@ -512,6 +565,7 @@ export function getVideo(): HTMLVideoElement | null {
             || (onMobileYouTube && video && isNaN(video.duration)))
             && Date.now() - lastRefresh > 500) {
         lastRefresh = Date.now();
+        if (!isVisible(video)) video = null;
         void refreshVideoAttachments();
     }
 
@@ -548,4 +602,12 @@ export function setIsAdPlaying(value: boolean): void {
 
 export function getIsLivePremiere(): boolean {
     return isLivePremiere;
+}
+
+export function getLastNonInlineVideoID(): VideoID | null {
+    return lastNonInlineVideoID;
+}
+
+export function getIsInline(): boolean {
+    return isInline;
 }

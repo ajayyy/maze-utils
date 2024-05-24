@@ -32,6 +32,7 @@ interface VideoData {
     videoID: string;
     isLive: boolean;
     isPremiere: boolean;
+    isInline: boolean; // Hover play
 }
 
 interface ElementCreated {
@@ -52,6 +53,7 @@ declare const ytInitialData: Record<string, string> | undefined;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let playerClient: any;
 let lastVideo = "";
+let lastInline = false;
 const id = "sponsorblock";
 const elementsToListenFor = getThumbnailElements();
 
@@ -129,9 +131,21 @@ function navigateFinishSend(event: CustomEvent): void {
 function sendVideoData(): void {
     if (!playerClient) return;
     const videoData = playerClient.getVideoData();
-    if (videoData && videoData.video_id !== lastVideo) {
+    const isInline = playerClient.isInline();
+
+    // Inline videos should always send event even if the same video
+    //  because that means the hover player was closed and reopened
+    // Otherwise avoid sending extra messages
+    if (videoData && (videoData.video_id !== lastVideo || lastInline !== isInline || isInline)) {
         lastVideo = videoData.video_id;
-        sendMessage({ type: "data", videoID: videoData.video_id, isLive: videoData.isLive, isPremiere: videoData.isPremiere } as VideoData);
+        lastInline = isInline;
+        sendMessage({
+            type: "data",
+            videoID: videoData.video_id,
+            isLive: videoData.isLive,
+            isPremiere: videoData.isPremiere,
+            isInline
+        } as VideoData);
     }
 }
 
