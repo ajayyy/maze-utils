@@ -19,7 +19,7 @@ export function getThumbnailElements() {
 
 export function getThumbnailImageSelectors() {
     if (!onMobile()) {
-        return "ytd-thumbnail:not([hidden]) img, ytd-playlist-thumbnail yt-image:not(.blurred-image) img";
+        return "ytd-thumbnail:not([hidden]) img, ytd-playlist-thumbnail yt-image:not(.blurred-image) img, yt-img-shadow.ytd-hero-playlist-thumbnail-renderer img";
     } else {
         return "img.video-thumbnail-img, img.amsterdam-playlist-thumbnail";
     }
@@ -41,12 +41,17 @@ export function getThumbnailLink(thumbnail: HTMLElement): HTMLElement | null {
 
 export function getThumbnailBoxSelectors() {
     if (!onMobile()) {
-        return getThumbnailSelectors(":not([hidden])");
+        // Hero thumbnail appears as hidden even though it is not
+        return getThumbnailSelectors(":not([hidden])", ".ytd-hero-playlist-thumbnail-renderer");
     } else {
         return ".media-item-thumbnail-container";
     }
 }
 
-export function getThumbnailSelectors(additionalSelectors = "") {
-    return getThumbnailElements().map((s) => `${s}${additionalSelectors}`).join(", ");
+export function getThumbnailSelectors(...additionalSelectors: string[]) {
+    if (additionalSelectors.length === 0) {
+        additionalSelectors = [""];
+    }
+
+    return getThumbnailElements().map((s) => additionalSelectors.map((selector) => `${s}${selector}`).join(", ")).join(", ");
 }
