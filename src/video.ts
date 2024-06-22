@@ -70,6 +70,8 @@ let lastNonInlineVideoID: VideoID | null = null;
 let isInline = false;
 // For server-side rendered ads
 let adDuration = 0;
+// If server-side ad couldn't be removed from current time properly
+let currentTimeWrong = false;
 
 let params: VideoModuleParams = {
     videoIDChange: () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
@@ -200,12 +202,13 @@ function resetValues() {
     isLivePremiere = false;
     isInline = false;
     adDuration = 0;
+    currentTimeWrong = false;
 
     isAdPlaying = false;
 
     // Reset the last media session link
     window.postMessage({
-        type: "sb-reset-media-session-link",
+        source: "sb-reset-media-session-link",
         videoID: null
     }, "/");
 }
@@ -530,6 +533,10 @@ function windowListenerHandler(event: MessageEvent): void {
         params.newVideosLoaded?.(data.videoIDs);
     } else if (dataType === "adDuration") {
         adDuration = data.duration;
+    } else if (dataType === "currentTimeWrong") {
+        currentTimeWrong = true;
+
+        alert(chrome.i18n.getMessage("submissionFailedServerSideAds"));
     }
 
     params.windowListenerHandler?.(event);
@@ -582,7 +589,6 @@ export function getVideoID(): VideoID | null {
 }
 
 export function getVideoDuration(): number {
-    console.log(video?.duration, adDuration)
     return Math.max(0, (video?.duration ?? 0) - adDuration);
 }
 
@@ -592,6 +598,17 @@ export function getCurrentTime(): number | undefined {
         return time - adDuration;
     } else {
         return time;
+    }
+}
+
+// Called when creating time to verify there aren't any
+//   undetected server-side ads causing issues
+export function verifyCurrentTime() {
+    if (getVideo() && getVideo()!.paused) {
+        window.postMessage({
+            source: "sb-verify-time",
+            time: getCurrentTime()
+        }, "/");
     }
 }
 
@@ -635,4 +652,8 @@ export function getLastNonInlineVideoID(): VideoID | null {
 
 export function getIsInline(): boolean {
     return isInline;
+}
+
+export function isCurrentTimeWrong(): boolean {
+    return currentTimeWrong;
 }

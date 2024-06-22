@@ -50,7 +50,11 @@ interface AdDurationMessage {
     duration: number;
 }
 
-type WindowMessage = StartMessage | FinishMessage | AdMessage | VideoData | ElementCreated | VideoIDsLoadedCreated | AdDurationMessage;
+interface CurrentTimeWrongMessage {
+    type: "currentTimeWrong";
+}
+
+type WindowMessage = StartMessage | FinishMessage | AdMessage | VideoData | ElementCreated | VideoIDsLoadedCreated | AdDurationMessage | CurrentTimeWrongMessage;
 
 declare const ytInitialData: Record<string, string> | undefined;
 
@@ -183,6 +187,15 @@ function windowMessageListener(message: MessageEvent) {
             resetMediaSessionThumbnail();
         } else if (message.data?.source === "sb-reset-media-session-link") {
             resetLastArtworkSrc();
+        } else if (message.data?.source === "sb-verify-time") {
+            // If time is different and it is paused
+            if (playerClient 
+                && playerClient.getCurrentTime() !== message.data?.time
+                && playerClient.getPlayerState() === 2) {
+                    sendMessage({
+                        type: "currentTimeWrong"
+                    });
+            }
         }
     }
 }
