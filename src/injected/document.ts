@@ -45,7 +45,12 @@ interface VideoIDsLoadedCreated {
     videoIDs: string[];
 }
 
-type WindowMessage = StartMessage | FinishMessage | AdMessage | VideoData | ElementCreated | VideoIDsLoadedCreated;
+interface AdDurationMessage {
+    type: "adDuration";
+    duration: number;
+}
+
+type WindowMessage = StartMessage | FinishMessage | AdMessage | VideoData | ElementCreated | VideoIDsLoadedCreated | AdDurationMessage;
 
 declare const ytInitialData: Record<string, string> | undefined;
 
@@ -184,6 +189,7 @@ function windowMessageListener(message: MessageEvent) {
 
 const savedSetup = {
     browserFetch: null as ((input: RequestInfo | URL, init?: RequestInit | undefined) => Promise<Response>) | null,
+    browserPush: null as ((...items: any[]) => number) | null,
     customElementDefine: null as ((name: string, constructor: CustomElementConstructor, options?: ElementDefinitionOptions | undefined) => void) | null,
     waitingInterval: null as NodeJS.Timer | null
 };
@@ -310,6 +316,39 @@ export function init(): void {
         });
     }
 
+    let lastSentDuration = 0;
+    const wrapper = (target, thisArg, args) => {
+        if (
+            args[0] 
+            && args[0] !== window
+            && typeof args[0].start === 'number'
+            && args[0].end
+            && args[0].namespace === 'ssap'
+            && args[0].id
+        ) {
+            const videoData = args[0];
+            if (videoData) {
+                const adDuration = videoData.start;
+                if (adDuration !== 0) {
+                    if (lastSentDuration !== adDuration) {
+                        lastSentDuration = adDuration;
+
+                        sendMessage({
+                            type: "adDuration",
+                            duration: adDuration / 1000
+                        })
+                    }
+                }
+            }
+        }
+        return Reflect.apply(target, thisArg, args);
+    };
+    const handler = {
+        apply: wrapper
+    };
+    savedSetup.browserPush = window.Array.prototype.push;
+    window.Array.prototype.push = new Proxy(window.Array.prototype.push, handler);
+
     window.addEventListener("message", windowMessageListener);
 
     if (typeof(ytInitialData) !== "undefined") {
@@ -345,6 +384,10 @@ function teardown() {
 
     if (savedSetup.browserFetch) {
         window.fetch = savedSetup.browserFetch;
+    }
+
+    if (savedSetup.browserPush) {
+        window.Array.prototype.push = savedSetup.browserPush;
     }
 
     if (savedSetup.customElementDefine) {

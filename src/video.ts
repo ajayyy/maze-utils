@@ -68,6 +68,8 @@ let channelIDInfo: ChannelIDInfo;
 let waitingForChannelID = false;
 let lastNonInlineVideoID: VideoID | null = null;
 let isInline = false;
+// For server-side rendered ads
+let adDuration = 0;
 
 let params: VideoModuleParams = {
     videoIDChange: () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
@@ -197,6 +199,7 @@ function resetValues() {
     };
     isLivePremiere = false;
     isInline = false;
+    adDuration = 0;
 
     isAdPlaying = false;
 
@@ -525,6 +528,8 @@ function windowListenerHandler(event: MessageEvent): void {
         newThumbnails();
     } else if (dataType === "videoIDsLoaded") {
         params.newVideosLoaded?.(data.videoIDs);
+    } else if (dataType === "adDuration") {
+        adDuration = data.duration;
     }
 
     params.windowListenerHandler?.(event);
@@ -574,6 +579,26 @@ export function getVideo(): HTMLVideoElement | null {
 
 export function getVideoID(): VideoID | null {
     return videoID;
+}
+
+export function getVideoDuration(): number {
+    console.log(video?.duration, adDuration)
+    return Math.max(0, (video?.duration ?? 0) - adDuration);
+}
+
+export function getCurrentTime(): number | undefined {
+    const time = getVideo()?.currentTime;
+    if (time) {
+        return time - adDuration;
+    } else {
+        return time;
+    }
+}
+
+export function setCurrentTime(time: number): void {
+    if (getVideo()) {
+        getVideo()!.currentTime = time + adDuration;
+    }
 }
 
 export function isOnInvidious(): boolean | null {
