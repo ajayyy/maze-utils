@@ -12,6 +12,10 @@ let thumbnailListener: ThumbnailListener | null = null;
 let selector = getThumbnailSelectors();
 let invidiousSelector = "div.thumbnail";
 
+export function getThumbnailSelector(): string {
+    return isOnInvidious() ? invidiousSelector : selector;
+}
+
 export function setThumbnailListener(listener: ThumbnailListener, onInitialLoad: () => void,
         configReady: () => boolean, selectorParam?: string,
             invidiousSelectorParam?: string): void {
@@ -78,7 +82,7 @@ export function newThumbnails() {
 
     const notNewThumbnails = handledThumbnails.keys();
 
-    const thumbnails = document.querySelectorAll(isOnInvidious() ? invidiousSelector : selector) as NodeListOf<HTMLElement>;
+    const thumbnails = document.querySelectorAll(getThumbnailSelector()) as NodeListOf<HTMLElement>;
     const newThumbnailsFound: HTMLElement[] = [];
     for (const thumbnail of thumbnails) {
         if (!handledThumbnails.has(thumbnail)) {
