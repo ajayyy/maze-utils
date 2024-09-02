@@ -15,7 +15,7 @@ export interface FetchResponse {
  * @param callback
  */
 export async function sendRealRequestToCustomServer(type: string, url: string,
-        data: Record<string, unknown> | null = {}) {
+        data: Record<string, unknown> | null = {}, headers: Record<string, unknown> = {}) {
     // If GET, convert JSON to parameters
     if (type.toLowerCase() === "get") {
         url = objectToURI(url, data, true);
@@ -26,7 +26,8 @@ export async function sendRealRequestToCustomServer(type: string, url: string,
     const response = await fetch(url, {
         method: type,
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            ...(headers || {})
         },
         redirect: 'follow',
         body: data ? JSON.stringify(data) : null
@@ -38,7 +39,7 @@ export async function sendRealRequestToCustomServer(type: string, url: string,
 export function setupBackgroundRequestProxy() {
     chrome.runtime.onMessage.addListener((request, sender, callback) => {
         if (request.message === "sendRequest") {
-            sendRealRequestToCustomServer(request.type, request.url, request.data).then(async (response) => {
+            sendRealRequestToCustomServer(request.type, request.url, request.data, request.headers).then(async (response) => {
                 callback({
                     responseText: await response.text(),
                     status: response.status,
@@ -69,14 +70,15 @@ export function setupBackgroundRequestProxy() {
     });
 }
 
-export function sendRequestToCustomServer(type: string, url: string, data = {}): Promise<FetchResponse> {
+export function sendRequestToCustomServer(type: string, url: string, data = {}, headers = {}): Promise<FetchResponse> {
     return new Promise((resolve, reject) => {
         // Ask the background script to do the work
         chrome.runtime.sendMessage({
             message: "sendRequest",
             type,
             url,
-            data
+            data,
+            headers
         }, (response) => {
             if (response.status !== -1) {
                 resolve(response);
