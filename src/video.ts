@@ -424,7 +424,7 @@ async function refreshVideoAttachments(): Promise<void> {
     let durationChange = false;
 
     // To handle the case with a paused miniplayer while playing a hover preview
-    const isOnMiniplayer = !!document.querySelector(".miniplayer");
+    const isOnMiniplayer = !!document.querySelector(".miniplayer video");
     if (isOnMiniplayer && newVideo) {
         const possibleVideos = [...document.querySelectorAll("video")].filter((v) => isVisible(v));
         if (possibleVideos.length > 1) {
