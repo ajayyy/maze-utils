@@ -415,7 +415,7 @@ let waitingForEmbed = false;
 async function refreshVideoAttachments(): Promise<void> {
     if (waitingForNewVideo) return;
 
-    if (!isVisible(video)) video = null;
+    if (!isVisible(video) && !isVinegarActive()) video = null;
 
     waitingForNewVideo = true;
     // Compatibility for Vinegar extension
@@ -473,6 +473,13 @@ async function refreshVideoAttachments(): Promise<void> {
     } else {
         void videoIDChange(getYouTubeVideoID());
     }
+}
+
+/**
+ * To handle compatibility with the Vinegar extension on Safari
+ */
+function isVinegarActive(): boolean {
+    return isSafari() && !!document.querySelector('video[vinegared="true"]');
 }
 
 export function triggerVideoElementChange(newVideo: HTMLVideoElement): void {
@@ -577,7 +584,7 @@ export function getVideo(): HTMLVideoElement | null {
             || (onMobileYouTube && video && isNaN(video.duration)))
             && Date.now() - lastRefresh > 500) {
         lastRefresh = Date.now();
-        if (!isVisible(video)) video = null;
+        if (!isVisible(video) && !isVinegarActive()) video = null;
         void refreshVideoAttachments();
     }
 
