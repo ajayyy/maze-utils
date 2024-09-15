@@ -4,7 +4,8 @@ export function getThumbnailElements() {
     if (!onMobile()) {
         return [
             "ytd-thumbnail", 
-            "ytd-playlist-thumbnail"
+            "ytd-playlist-thumbnail",
+            "ytm-shorts-lockup-view-model"
         ];
     } else {
         return [
@@ -19,7 +20,7 @@ export function getThumbnailElements() {
 
 export function getThumbnailImageSelectors() {
     if (!onMobile()) {
-        return "ytd-thumbnail:not([hidden]) img, ytd-playlist-thumbnail yt-image:not(.blurred-image) img, yt-img-shadow.ytd-hero-playlist-thumbnail-renderer img";
+        return "ytd-thumbnail:not([hidden]) img, ytd-playlist-thumbnail yt-image:not(.blurred-image) img, yt-img-shadow.ytd-hero-playlist-thumbnail-renderer img, ytm-shorts-lockup-view-model img";
     } else {
         return "img.video-thumbnail-img, img.amsterdam-playlist-thumbnail";
     }
