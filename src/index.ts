@@ -14,7 +14,7 @@ export async function waitFor<T>(condition: () => T, timeout = 5000, check = 100
         if (timeout) {
             setTimeout(() => {
                 clearInterval(interval!);
-                reject(`TIMEOUT: ${Error().stack}`);
+                reject(`TIMEOUT waiting for ${condition?.toString()}: ${Error().stack}`);
             }, timeout);
 
             interval = setInterval(intervalCheck, check);
