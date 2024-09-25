@@ -42,11 +42,13 @@ interface VideoModuleParams {
     resetValues: () => void;
     windowListenerHandler?: (event: MessageEvent) => void;
     newVideosLoaded?: (videoIDs: VideoID[]) => void; // Used to pre-cache data for videos
+    onNavigateToChannel?: () => void;
     documentScript: string;
     allowClipPage?: boolean;
 }
 
 const embedTitleSelector = "a.ytp-title-link[data-sessionlink='feature=player-title']:not(.cbCustomTitle)";
+const channelTrailerTitleSelector = "ytd-channel-video-player-renderer a.ytp-title-link[data-sessionlink='feature=player-title']:not(.cbCustomTitle)";
 
 let video: HTMLVideoElement | null = null;
 let videoWidth: string | null = null;
@@ -81,6 +83,7 @@ let params: VideoModuleParams = {
     resetValues: () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
     windowListenerHandler: () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
     newVideosLoaded: () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
+    onNavigateToChannel: () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
     documentScript: "",
     allowClipPage: false
 };
@@ -94,9 +97,10 @@ export function setupVideoModule(moduleParams: VideoModuleParams, config: () => 
     // Direct Links after the config is loaded
     void waitFor(() => getConfig().isReady(), 1000, 1).then(() => videoIDChange(getYouTubeVideoID()));
 
-    // Can't use onInvidious at this point, the configuration might not be ready.
-    if (YT_DOMAINS.includes(location.host) && document.URL.includes("/embed/")) {
-        waitForElement(embedTitleSelector)
+    // If on embed, or on channel page and the extension just reloaded
+    if (YT_DOMAINS.includes(location.host) 
+            && (document.URL.includes("/embed/") || (document.readyState === "complete" && isOnChannelPage()))) {
+        waitForElement(isOnChannelPage() ? channelTrailerTitleSelector : embedTitleSelector)
             .then((e) => waitFor(() => e.getAttribute("href")))
             .then(() => videoIDChange(getYouTubeVideoID()))
             // Ignore if not an embed
@@ -165,7 +169,14 @@ async function videoIDChange(id: VideoID | null, isInlineParam = false): Promise
     }
 
     //if the id has not changed return unless the video element has changed
-    if (videoID === id && (isVisible(video) || !video)) return false;
+    if (videoID === id && (isVisible(video) || !video)) {
+        if (isOnChannelPage()) {
+            if (videoID) {
+                params.onNavigateToChannel?.();
+            }
+        }
+        return false;
+    }
 
     // Make sure the video is still visible
     if (!isVisible(video)) {
@@ -216,7 +227,7 @@ function resetValues() {
 export function getYouTubeVideoID(url?: string): VideoID | null {
     url ||= document?.URL;
     // pageType shortcut
-    if (pageType === PageType.Channel) return getYouTubeVideoIDFromDocument();
+    if (pageType === PageType.Channel) return getYouTubeVideoIDFromDocument(true, PageType.Channel);
     // clips should never skip, going from clip to full video has no indications.
     if (!params.allowClipPage && url.includes("youtube.com/clip/")) return null;
     // skip to document and don't hide if on /embed/
@@ -224,7 +235,7 @@ export function getYouTubeVideoID(url?: string): VideoID | null {
     // skip to URL if matches youtube watch or invidious or matches youtube pattern
     if ((!url.includes("youtube.com")) || url.includes("/watch") || url.includes("/shorts/") || url.includes("playlist")) return getYouTubeVideoIDFromURL(url);
     // skip to document if matches pattern
-    if (url.includes("/channel/") || url.includes("/user/") || url.includes("/c/")) return getYouTubeVideoIDFromDocument(true, PageType.Channel);
+    if (isOnChannelPage()) return getYouTubeVideoIDFromDocument(true, PageType.Channel);
     // not sure, try URL then document
     return getYouTubeVideoIDFromURL(url) || getYouTubeVideoIDFromDocument(false);
 }
@@ -232,7 +243,8 @@ export function getYouTubeVideoID(url?: string): VideoID | null {
 function getYouTubeVideoIDFromDocument(hideIcon = true, pageHint = PageType.Watch): VideoID | null {
     // get ID from document (channel trailer / embedded playlist)
     const element = pageHint === PageType.Embed ? document.querySelector(embedTitleSelector)
-        : video?.parentElement?.parentElement?.querySelector(embedTitleSelector);
+        : (pageHint === PageType.Channel ? document.querySelector(channelTrailerTitleSelector)
+            : video?.parentElement?.parentElement?.querySelector(embedTitleSelector));
     const videoURL = element?.getAttribute("href");
     if (videoURL) {
         onInvidious = hideIcon;
@@ -663,4 +675,8 @@ export function getIsInline(): boolean {
 
 export function isCurrentTimeWrong(): boolean {
     return currentTimeWrong;
+}
+
+export function isOnChannelPage(): boolean {
+    return !!document.URL.match(/@|\/c\/|\/channel\/|\/user\//);
 }
