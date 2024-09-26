@@ -190,7 +190,7 @@ function windowMessageListener(message: MessageEvent) {
         } else if (message.data?.source === "sb-verify-time") {
             // If time is different and it is paused
             if (playerClient 
-                && playerClient.getCurrentTime() !== message.data?.time
+                && Math.abs(playerClient.getCurrentTime() - message.data?.time) > 0.1
                 && playerClient.getPlayerState() === 2) {
                     sendMessage({
                         type: "currentTimeWrong"
