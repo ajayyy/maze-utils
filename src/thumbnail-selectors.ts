@@ -19,6 +19,16 @@ export function getThumbnailElements() {
     }
 }
 
+export function getThumbnailElementsToListenFor() {
+    const results = getThumbnailElements();
+
+    if (!onMobile()) {
+        results.push("yt-lockup-view-model");
+    }
+
+    return results;
+}
+
 export function getThumbnailImageSelectors() {
     if (!onMobile()) {
         return "ytd-thumbnail:not([hidden]) img, ytd-playlist-thumbnail yt-image:not(.blurred-image) img, yt-img-shadow.ytd-hero-playlist-thumbnail-renderer img, ytm-shorts-lockup-view-model img, .yt-thumbnail-view-model__image img";

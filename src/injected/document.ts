@@ -7,7 +7,7 @@ import { versionHigher } from "../versionHigher";
 import { PageType } from "../video";
 import { version } from "../version.json";
 import { YT_DOMAINS } from "../const";
-import { getThumbnailElements } from "../thumbnail-selectors";
+import { getThumbnailElementsToListenFor } from "../thumbnail-selectors";
 import { onMobile } from "../pageInfo";
 import { resetLastArtworkSrc, resetMediaSessionThumbnail, setMediaSessionInfo } from "./mediaSession";
 
@@ -64,7 +64,7 @@ let playerClient: any;
 let lastVideo = "";
 let lastInline = false;
 const id = "sponsorblock";
-const elementsToListenFor = getThumbnailElements();
+const elementsToListenFor = getThumbnailElementsToListenFor();
 
 // From BlockTube https://github.com/amitbl/blocktube/blob/9dc6dcee1847e592989103b0968092eb04f04b78/src/scripts/seed.js#L52-L58
 const fetchUrlsToRead = [
