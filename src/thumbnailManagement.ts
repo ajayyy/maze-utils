@@ -100,6 +100,21 @@ export function newThumbnails() {
 
             const link = getThumbnailLink(thumbnail);
             if (link) observer.observe(link, { attributes: true });
+
+            // For channel pages where video thumbnails become shorts thumbnails
+            const observer2 = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    if (mutation.type === "childList" 
+                            && (mutation.addedNodes[0]?.nodeName.toLowerCase().includes("shorts"))
+                                || mutation.previousSibling?.nodeName.toLowerCase().includes("shorts")) {
+                        thumbnailListener?.([thumbnail]);
+                        break;
+                    }
+                }
+            });
+
+            const content = thumbnail.querySelector("#content");
+            if (content) observer2.observe(content, { childList: true });
         }
     }
 

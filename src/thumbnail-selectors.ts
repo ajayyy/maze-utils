@@ -24,6 +24,7 @@ export function getThumbnailElementsToListenFor() {
 
     if (!onMobile()) {
         results.push("yt-lockup-view-model");
+        results.push("ytm-shorts-lockup-view-model-v2");
     }
 
     return results;
