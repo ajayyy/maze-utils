@@ -555,7 +555,7 @@ function windowListenerHandler(event: MessageEvent): void {
     } else if (dataType === "currentTimeWrong") {
         currentTimeWrong = true;
 
-        alert(chrome.i18n.getMessage("submissionFailedServerSideAds"));
+        alert(`${chrome.i18n.getMessage("submissionFailedServerSideAds")}\n\nInclude the following:\n${data.playerTime}\n${data.expectedTime}`);
     }
 
     params.windowListenerHandler?.(event);

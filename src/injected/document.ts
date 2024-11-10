@@ -52,6 +52,8 @@ interface AdDurationMessage {
 
 interface CurrentTimeWrongMessage {
     type: "currentTimeWrong";
+    playerTime: number;
+    expectedTime: number;
 }
 
 type WindowMessage = StartMessage | FinishMessage | AdMessage | VideoData | ElementCreated | VideoIDsLoadedCreated | AdDurationMessage | CurrentTimeWrongMessage;
@@ -193,7 +195,9 @@ function windowMessageListener(message: MessageEvent) {
                 && Math.abs(playerClient.getCurrentTime() - message.data?.time) > 0.1
                 && playerClient.getPlayerState() === 2) {
                     sendMessage({
-                        type: "currentTimeWrong"
+                        type: "currentTimeWrong",
+                        playerTime: playerClient.getCurrentTime(),
+                        expectedTime: message.data?.time
                     });
             }
         }
