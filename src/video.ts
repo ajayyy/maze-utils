@@ -420,6 +420,15 @@ function setupVideoMutationListener() {
     }
 }
 
+const waitingForVideoListeners: Array<(video: HTMLVideoElement) => void> = [];
+export function waitForVideo(): Promise<HTMLVideoElement> {
+    if (video) return Promise.resolve(video);
+
+    return new Promise((resolve) => {
+        waitingForVideoListeners.push(resolve);
+    });
+}
+
 // Used only for embeds to wait until the url changes
 let embedLastUrl = "";
 let waitingForEmbed = false;
@@ -466,6 +475,9 @@ async function refreshVideoAttachments(): Promise<void> {
     }
 
     params.videoElementChange?.(isNewVideo, video);
+    waitingForVideoListeners.forEach((l) => l(newVideo));
+    waitingForVideoListeners.length = 0;
+
     setupVideoMutationListener();
 
     if (document.URL.includes("/embed/")) {
