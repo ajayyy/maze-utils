@@ -638,7 +638,8 @@ export function verifyCurrentTime() {
     if (getVideo() && getVideo()!.paused) {
         window.postMessage({
             source: "sb-verify-time",
-            time: getCurrentTime()
+            time: getCurrentTime(),
+            rawTime: getVideo()!.currentTime
         }, "/");
     }
 }

@@ -10,6 +10,7 @@ import { YT_DOMAINS } from "../const";
 import { getThumbnailElementsToListenFor } from "../thumbnail-selectors";
 import { onMobile } from "../pageInfo";
 import { resetLastArtworkSrc, resetMediaSessionThumbnail, setMediaSessionInfo } from "./mediaSession";
+import { isVisible } from "../dom";
 
 interface StartMessage {
     type: "navigation";
@@ -190,8 +191,10 @@ function windowMessageListener(message: MessageEvent) {
         } else if (message.data?.source === "sb-reset-media-session-link") {
             resetLastArtworkSrc();
         } else if (message.data?.source === "sb-verify-time") {
-            // If time is different and it is paused
+            // If time is different and it is paused and no seek occurred since the message was sent
+            const video = [...document.querySelectorAll("video")].filter((v) => isVisible(v))[0];
             if (playerClient 
+                && message.data?.rawTime === video?.currentTime
                 && Math.abs(playerClient.getCurrentTime() - message.data?.time) > 0.1
                 && playerClient.getPlayerState() === 2) {
                     sendMessage({
