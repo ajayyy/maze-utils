@@ -184,7 +184,7 @@ function setupWaitingMutationListener(): void {
         if (waitingElements.length > 0) {
             waitingMutationObserver = new MutationObserver(checkForObjects);
 
-            waitingMutationObserver.observe(document.body, {
+            waitingMutationObserver.observe(document.documentElement, {
                 childList: true,
                 subtree: true
             });
