@@ -45,18 +45,22 @@ export function isVisible(element: HTMLElement | null, ignoreWidth = false): boo
     return false;
 }
 
-export function findValidElementFromSelector(selectors: string[], ignoreWidth = false): HTMLElement | null {
-    return findValidElementFromGenerator(selectors, ignoreWidth, (selector) => document.querySelector(selector));
+export function isVisibleOrParent(element: HTMLElement | null, ignoreWidth = false, checkParent = true): boolean {
+    return isVisible(element, ignoreWidth) || (checkParent && !!element && isVisible(element.parentElement, ignoreWidth));
 }
 
-export function findValidElement(elements: HTMLElement[] | NodeListOf<HTMLElement>, ignoreWidth = false): HTMLElement | null {
-    return findValidElementFromGenerator(elements, ignoreWidth);
+export function findValidElementFromSelector(selectors: string[], ignoreWidth = false, checkParent = false): HTMLElement | null {
+    return findValidElementFromGenerator(selectors, ignoreWidth, checkParent, (selector) => document.querySelector(selector));
 }
 
-function findValidElementFromGenerator<T>(objects: T[] | NodeListOf<HTMLElement>, ignoreWidth = false, generator?: (obj: T) => HTMLElement | null): HTMLElement | null {
+export function findValidElement(elements: HTMLElement[] | NodeListOf<HTMLElement>, ignoreWidth = false, checkParent = false): HTMLElement | null {
+    return findValidElementFromGenerator(elements, ignoreWidth, checkParent);
+}
+
+function findValidElementFromGenerator<T>(objects: T[] | NodeListOf<HTMLElement>, ignoreWidth = false, checkParent = false, generator?: (obj: T) => HTMLElement | null): HTMLElement | null {
     for (const obj of objects) {
         const element = generator ? generator(obj as T) : obj as HTMLElement;
-        if (element && isVisible(element, ignoreWidth)) {
+        if (element && isVisibleOrParent(element, ignoreWidth, checkParent)) {
             return element;
         }
     }
@@ -192,6 +196,6 @@ function setupWaitingMutationListener(): void {
     }
 }
 
-export function getElement(selector: string, visibleCheck: boolean, ignoreWidth = false) {
-    return visibleCheck ? findValidElement(document.querySelectorAll(selector), ignoreWidth) : document.querySelector(selector) as HTMLElement;
+export function getElement(selector: string, visibleCheck: boolean, ignoreWidth = false, checkParent = false) {
+    return visibleCheck ? findValidElement(document.querySelectorAll(selector), ignoreWidth, checkParent) : document.querySelector(selector) as HTMLElement;
 }
