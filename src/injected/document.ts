@@ -91,16 +91,16 @@ const sendMessage = (message: WindowMessage): void => {
     window.postMessage({ source: id, ...message }, "/");
 }
 
-function setupPlayerClient(e: CustomEvent): void {
+function setupPlayerClient(): void {
     const oldPlayerClient = playerClient;
-    playerClient = e.detail;
+    playerClient = document.getElementById("movie_player");
     sendVideoData();
     
     if (oldPlayerClient) {
         return; // No need to setup listeners
     }
-    e.detail.addEventListener('onAdStart', () => sendMessage({ type: "ad", playing: true } as AdMessage));
-    e.detail.addEventListener('onAdFinish', () => sendMessage({ type: "ad", playing: false } as AdMessage));
+    playerClient.addEventListener('onAdStart', () => sendMessage({ type: "ad", playing: true } as AdMessage));
+    playerClient.addEventListener('onAdFinish', () => sendMessage({ type: "ad", playing: false } as AdMessage));
 }
 
 function navigationParser(event: CustomEvent): StartMessage | null {
