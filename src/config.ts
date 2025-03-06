@@ -164,8 +164,9 @@ export class ProtoConfig<T extends SyncStorage, U extends LocalStorage> {
         void chrome.storage.local.set({
             [prop]: value
         }, () => {
-            if (chrome.runtime.lastError) {
-                alert(chrome.i18n.getMessage("storageFull"));
+            const error = chrome.runtime.lastError;
+            if (error && prop !== "navigationApiAvailable") {
+                alert(`SponsorBlock/DeArrow: ${chrome.i18n.getMessage("storageFull")}\n\n${error}`);
             }
         });
     }

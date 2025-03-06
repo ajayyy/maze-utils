@@ -92,7 +92,7 @@ const sendMessage = (message: WindowMessage): void => {
     window.postMessage({ source: id, ...message }, "/");
 }
 
-function setupPlayerClient(e: CustomEvent): void {
+function setupPlayerClient(): void {
     const oldPlayerClient = playerClient;
     if (e.type === "ytu.app.lib.player.interaction-event") { // YTTV only
         const playerClientTemp = document.querySelector("#movie_player");
@@ -104,7 +104,7 @@ function setupPlayerClient(e: CustomEvent): void {
             return;
         }
     } else {
-        playerClient = e.detail;
+        playerClient = document.getElementById("movie_player");
     }
     sendVideoData();
     
