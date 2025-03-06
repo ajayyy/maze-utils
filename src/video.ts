@@ -30,6 +30,7 @@ export interface ParsedVideoURL {
     videoID: VideoID | null;
     onInvidious: boolean;
     onMobileYouTube: boolean;
+    onYTTV: boolean;
     callLater: boolean;
 }
 
@@ -65,6 +66,7 @@ let isLivePremiere: boolean
 let videoID: VideoID | null = null;
 let onInvidious: boolean | null = null;
 let onMobileYouTube = false;
+let onYTTV = false;
 let pageType: PageType = PageType.Unknown;
 let channelIDInfo: ChannelIDInfo;
 let waitingForChannelID = false;
@@ -271,6 +273,7 @@ function getYouTubeVideoIDFromURL(url: string): VideoID | null {
 
     onInvidious = result.onInvidious;
     onMobileYouTube = result.onMobileYouTube;
+    onYTTV = result.onYTTV;
 
     return result.videoID;
 }
@@ -283,6 +286,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
     if (url.startsWith("https://www.youtube.com/tv?")) url = url.replace(/\?[^#]+#/, "");
     let onInvidious = false;
     let onMobileYouTube = false;
+    let onYTTV = false;
 
     //Attempt to parse url
     let urlObject: URL | null = null;
@@ -294,6 +298,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
             videoID: null,
             onInvidious,
             onMobileYouTube,
+            onYTTV,
             callLater: false
         };
     }
@@ -302,6 +307,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
     if (YT_DOMAINS.includes(urlObject.host)) {
         // on YouTube
         if (urlObject.host === "m.youtube.com") onMobileYouTube = true;
+        if (urlObject.host === "tv.youtube.com") onYTTV = true;
         onInvidious = false;
     } else if (getConfig().isReady() && getConfig().config!.invidiousInstances?.includes(urlObject.hostname)) {
         onInvidious = true;
@@ -310,6 +316,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
             videoID: null,
             onInvidious,
             onMobileYouTube,
+            onYTTV,
             callLater: !getConfig().isReady() // Might be an Invidious tab
         };
     }
@@ -321,15 +328,17 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
             videoID: id?.length == 11 ? id as VideoID : null,
             onInvidious,
             onMobileYouTube,
+            onYTTV,
             callLater: false
         };
-    } else if (urlObject.pathname.startsWith("/embed/") || urlObject.pathname.startsWith("/shorts/")) {
+    } else if (urlObject.pathname.startsWith("/embed/") || urlObject.pathname.startsWith("/shorts/") || (urlObject.host === "tv.youtube.com" && urlObject.pathname.startsWith("/watch/"))) {
         try {
             const id = urlObject.pathname.split("/")[2]
             if (id?.length >= 11 ) return {
                 videoID: id.slice(0, 11) as VideoID,
                 onInvidious,
                 onMobileYouTube,
+                onYTTV,
                 callLater: false
             };
         } catch (e) {
@@ -338,6 +347,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
                 videoID: null,
                 onInvidious,
                 onMobileYouTube,
+                onYTTV,
                 callLater: false
             };
         }
@@ -347,6 +357,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
         videoID: null,
         onInvidious,
         onMobileYouTube,
+        onYTTV,
         callLater: false
     };
 }
@@ -656,6 +667,10 @@ export function isOnInvidious(): boolean | null {
 
 export function isOnMobileYouTube(): boolean {
     return onMobileYouTube;
+}
+
+export function isOnYTTV(): boolean {
+    return onYTTV;
 }
 
 export function getWaitingForChannelID(): boolean {

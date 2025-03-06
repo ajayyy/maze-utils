@@ -66,6 +66,7 @@ declare const ytInitialData: Record<string, string> | undefined;
 let playerClient: any;
 let lastVideo = "";
 let lastInline = false;
+let lastLive = false;
 const id = "sponsorblock";
 const elementsToListenFor = getThumbnailElementsToListenFor();
 
@@ -93,7 +94,18 @@ const sendMessage = (message: WindowMessage): void => {
 
 function setupPlayerClient(): void {
     const oldPlayerClient = playerClient;
-    playerClient = document.getElementById("movie_player");
+    if (e.type === "ytu.app.lib.player.interaction-event") { // YTTV only
+        const playerClientTemp = document.querySelector("#movie_player");
+        if (playerClientTemp) {
+            playerClient = document.querySelector("#movie_player");
+            (playerClient.querySelector("video") as HTMLVideoElement)?.addEventListener("durationchange", sendVideoData);
+            (playerClient.querySelector("video") as HTMLVideoElement)?.addEventListener("loadstart", sendVideoData);
+        } else {
+            return;
+        }
+    } else {
+        playerClient = document.getElementById("movie_player");
+    }
     sendVideoData();
     
     if (oldPlayerClient) {
@@ -148,9 +160,10 @@ function sendVideoData(): void {
     // Inline videos should always send event even if the same video
     //  because that means the hover player was closed and reopened
     // Otherwise avoid sending extra messages
-    if (videoData && (videoData.video_id !== lastVideo || lastInline !== isInline || isInline)) {
+    if (videoData && (videoData.video_id !== lastVideo || lastLive !== videoData.isLive || lastInline !== isInline || isInline)) {
         lastVideo = videoData.video_id;
         lastInline = isInline;
+        lastLive = videoData.isLive; // YTTV doesn't immediately populate this on page load
         sendMessage({
             type: "data",
             videoID: videoData.video_id,
@@ -244,6 +257,15 @@ export function init(): void {
     document.addEventListener("yt-player-updated", setupPlayerClient);
     document.addEventListener("yt-navigate-start", navigationStartSend);
     document.addEventListener("yt-navigate-finish", navigateFinishSend);
+
+    if (document.location.host === "tv.youtube.com") {
+        document.addEventListener("yt-navigate", navigateFinishSend);
+        document.addEventListener("ytu.app.lib.player.interaction-event", setupPlayerClient);
+        if (document.getElementById("#movie_player")) {
+            setupPlayerClient({target: (document.getElementById("#movie_player")?.parentElement as unknown as EventTarget)} as CustomEvent);
+            sendVideoData();
+        }
+    }
 
     if (onMobile()) {
         window.addEventListener("state-navigateend", navigateFinishSend);
@@ -397,6 +419,12 @@ function teardown() {
     document.removeEventListener("yt-player-updated", setupPlayerClient);
     document.removeEventListener("yt-navigate-start", navigationStartSend);
     document.removeEventListener("yt-navigate-finish", navigateFinishSend);
+
+    if (document.location.host === "tv.youtube.com") {
+        document.removeEventListener("yt-navigate", navigateFinishSend);
+        document.removeEventListener("ytu.app.lib.player.interaction-event", setupPlayerClient);
+    }
+
 
     if (onMobile()) {
         window.removeEventListener("state-navigateend", navigateFinishSend);
