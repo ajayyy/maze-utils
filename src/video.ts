@@ -235,7 +235,7 @@ export function getYouTubeVideoID(url?: string): VideoID | null {
     // skip to document and don't hide if on /embed/
     if (url.includes("/embed/") && url.includes("youtube.com")) return getYouTubeVideoIDFromDocument(false, PageType.Embed);
     // skip to URL if matches youtube watch or invidious or matches youtube pattern
-    if ((!url.includes("youtube.com")) || url.includes("/watch") || url.includes("/shorts/") || url.includes("playlist")) return getYouTubeVideoIDFromURL(url);
+    if ((!url.includes("youtube.com")) || url.match(/\/watch|\/shorts\/|playlist|\/live\//)) return getYouTubeVideoIDFromURL(url);
     // skip to document if matches pattern
     if (isOnChannelPage()) return getYouTubeVideoIDFromDocument(true, PageType.Channel);
     // not sure, try URL then document
@@ -331,7 +331,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
             onYTTV,
             callLater: false
         };
-    } else if (urlObject.pathname.startsWith("/embed/") || urlObject.pathname.startsWith("/shorts/") || (urlObject.host === "tv.youtube.com" && urlObject.pathname.startsWith("/watch/"))) {
+    } else if (urlObject.pathname.match(/^\/embed\/|^\/shorts\/|^\/live\//) || (urlObject.host === "tv.youtube.com" && urlObject.pathname.startsWith("/watch/"))) {
         try {
             const id = urlObject.pathname.split("/")[2]
             if (id?.length >= 11 ) return {
