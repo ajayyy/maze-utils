@@ -645,11 +645,11 @@ export function getCurrentTime(): number | undefined {
 
 // Called when creating time to verify there aren't any
 //   undetected server-side ads causing issues
-export function verifyCurrentTime() {
+export function verifyCurrentTime(time?: number): void {
     if (getVideo() && getVideo()!.paused) {
         window.postMessage({
             source: "sb-verify-time",
-            time: getCurrentTime(),
+            time: time ?? getCurrentTime(),
             rawTime: getVideo()!.currentTime
         }, "/");
     }
