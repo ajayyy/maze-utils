@@ -8,7 +8,7 @@ import { PageType } from "../video";
 import { version } from "../version.json";
 import { YT_DOMAINS } from "../const";
 import { getThumbnailElementsToListenFor } from "../thumbnail-selectors";
-import { onMobile } from "../pageInfo";
+import { onMobile, onYouTubeCableTV } from "../pageInfo";
 import { resetLastArtworkSrc, resetMediaSessionThumbnail, setMediaSessionInfo } from "./mediaSession";
 import { isVisible } from "../dom";
 
@@ -271,7 +271,7 @@ export function init(): void {
         window.addEventListener("state-navigateend", navigateFinishSend);
     }
 
-    if (YT_DOMAINS.includes(window.location.host) && !onMobile()) {
+    if (YT_DOMAINS.includes(window.location.host) && !onMobile() && !onYouTubeCableTV()) {
         if (!window.customElements) {
             // Old versions of Chrome that don't support "world" option for content scripts
             createMutationObserver();
