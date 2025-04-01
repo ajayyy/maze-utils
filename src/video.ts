@@ -31,6 +31,7 @@ export interface ParsedVideoURL {
     onInvidious: boolean;
     onMobileYouTube: boolean;
     onYTTV: boolean;
+    onYouTubeMusic: boolean;
     callLater: boolean;
 }
 
@@ -67,6 +68,7 @@ let videoID: VideoID | null = null;
 let onInvidious: boolean | null = null;
 let onMobileYouTube = false;
 let onYTTV = false;
+let onYouTubeMusic: boolean = false;
 let pageType: PageType = PageType.Unknown;
 let channelIDInfo: ChannelIDInfo;
 let waitingForChannelID = false;
@@ -274,6 +276,7 @@ function getYouTubeVideoIDFromURL(url: string): VideoID | null {
     onInvidious = result.onInvidious;
     onMobileYouTube = result.onMobileYouTube;
     onYTTV = result.onYTTV;
+    onYouTubeMusic = result.onYouTubeMusic;
 
     return result.videoID;
 }
@@ -287,6 +290,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
     let onInvidious = false;
     let onMobileYouTube = false;
     let onYTTV = false;
+    let onYouTubeMusic = false;
 
     //Attempt to parse url
     let urlObject: URL | null = null;
@@ -299,6 +303,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
             onInvidious,
             onMobileYouTube,
             onYTTV,
+            onYouTubeMusic,
             callLater: false
         };
     }
@@ -308,6 +313,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
         // on YouTube
         if (urlObject.host === "m.youtube.com") onMobileYouTube = true;
         if (urlObject.host === "tv.youtube.com") onYTTV = true;
+        if (urlObject.host === "music.youtube.com") onYouTubeMusic = true;
         onInvidious = false;
     } else if (getConfig().isReady() && getConfig().config!.invidiousInstances?.includes(urlObject.hostname)) {
         onInvidious = true;
@@ -317,6 +323,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
             onInvidious,
             onMobileYouTube,
             onYTTV,
+            onYouTubeMusic,
             callLater: !getConfig().isReady() // Might be an Invidious tab
         };
     }
@@ -329,6 +336,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
             onInvidious,
             onMobileYouTube,
             onYTTV,
+            onYouTubeMusic,
             callLater: false
         };
     } else if (urlObject.pathname.match(/^\/embed\/|^\/shorts\/|^\/live\//) || (urlObject.host === "tv.youtube.com" && urlObject.pathname.startsWith("/watch/"))) {
@@ -339,6 +347,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
                 onInvidious,
                 onMobileYouTube,
                 onYTTV,
+                onYouTubeMusic,
                 callLater: false
             };
         } catch (e) {
@@ -348,6 +357,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
                 onInvidious,
                 onMobileYouTube,
                 onYTTV,
+                onYouTubeMusic,
                 callLater: false
             };
         }
@@ -358,6 +368,7 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
         onInvidious,
         onMobileYouTube,
         onYTTV,
+        onYouTubeMusic,
         callLater: false
     };
 }
@@ -587,7 +598,7 @@ function windowListenerHandler(event: MessageEvent): void {
 function addPageListeners(): void {
     const refreshListeners = () => {
         if (!isVisible(video)) {
-            void refreshVideoAttachments();
+            void refreshVideoAttachments(); 
         }
     };
 
@@ -667,6 +678,10 @@ export function isOnInvidious(): boolean | null {
 
 export function isOnMobileYouTube(): boolean {
     return onMobileYouTube;
+}
+
+export function isOnYouTubeMusic(): boolean {
+    return onYouTubeMusic;
 }
 
 export function isOnYTTV(): boolean {
