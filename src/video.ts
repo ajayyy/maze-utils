@@ -68,7 +68,7 @@ let videoID: VideoID | null = null;
 let onInvidious: boolean | null = null;
 let onMobileYouTube = false;
 let onYTTV = false;
-let onYouTubeMusic: boolean = false;
+let onYouTubeMusic = false;
 let pageType: PageType = PageType.Unknown;
 let channelIDInfo: ChannelIDInfo;
 let waitingForChannelID = false;
@@ -598,7 +598,7 @@ function windowListenerHandler(event: MessageEvent): void {
 function addPageListeners(): void {
     const refreshListeners = () => {
         if (!isVisible(video)) {
-            void refreshVideoAttachments(); 
+            void refreshVideoAttachments();
         }
     };
 
