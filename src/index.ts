@@ -65,3 +65,9 @@ export function isFirefoxOrSafari(): boolean {
     // @ts-ignore
     return typeof(browser) !== "undefined";
 }
+
+let cachedUserAgent: string;
+export function extensionUserAgent(): string {
+    cachedUserAgent ??= `${chrome.runtime.id}/v${chrome.runtime.getManifest().version}`;
+    return cachedUserAgent;
+}
