@@ -46,7 +46,8 @@ export function isVisible(element: HTMLElement | null, ignoreWidth = false): boo
 }
 
 export function isVisibleOrParent(element: HTMLElement | null, ignoreWidth = false, checkParent = true): boolean {
-    return isVisible(element, ignoreWidth) || (checkParent && !!element && isVisible(element.parentElement, ignoreWidth));
+    return isVisible(element, ignoreWidth) 
+        || (checkParent && !!element && (isVisible(element.parentElement, ignoreWidth) || isVisible(element.parentElement?.parentElement ?? null, ignoreWidth)));
 }
 
 export function findValidElementFromSelector(selectors: string[], ignoreWidth = false, checkParent = false): HTMLElement | null {
@@ -72,6 +73,7 @@ interface WaitingElement {
     selector: string;
     visibleCheck: boolean;
     ignoreWidth: boolean;
+    checkParent: boolean;
     callbacks: Array<(element: Element) => void>;
     elements?: NodeListOf<HTMLElement>;
 }
@@ -82,9 +84,9 @@ let waitingMutationObserver: MutationObserver | null = null;
 let waitingElements: WaitingElement[] = [];
 
 /* Uses a mutation observer to wait asynchronously */
-export async function waitForElement(selector: string, visibleCheck = false, ignoreWidth = false): Promise<Element> {
+export async function waitForElement(selector: string, visibleCheck = false, ignoreWidth = false, checkParent = false): Promise<Element> {
     return await new Promise((resolve) => {
-        const initialElement = getElement(selector, visibleCheck, ignoreWidth);
+        const initialElement = getElement(selector, visibleCheck, ignoreWidth, checkParent);
         if (initialElement) {
             resolve(initialElement);
             return;
@@ -100,6 +102,7 @@ export async function waitForElement(selector: string, visibleCheck = false, ign
                 selector,
                 visibleCheck,
                 ignoreWidth,
+                checkParent,
                 callbacks: [resolve]
             });
         }
@@ -123,7 +126,7 @@ function setupWaitingMutationListener(): void {
         const checkForObjects = (mutations?: MutationRecord[]) => {
             const foundSelectors: string[] = [];
             for (const waitingElement of waitingElements) {
-                const { selector, visibleCheck, ignoreWidth, callbacks } = waitingElement;
+                const { selector, visibleCheck, ignoreWidth, checkParent, callbacks } = waitingElement;
 
                 let updatePossibleElements = true;
                 if (mutations) {
@@ -160,7 +163,7 @@ function setupWaitingMutationListener(): void {
                 if (possibleElements && possibleElements.length > 0) {
                     waitingElement.elements = possibleElements;
 
-                    const element = visibleCheck ? findValidElement(possibleElements, ignoreWidth) : possibleElements[0] as HTMLElement;
+                    const element = visibleCheck ? findValidElement(possibleElements, ignoreWidth, checkParent) : possibleElements[0] as HTMLElement;
                     if (element) {
                         if (chrome.runtime?.id) {
                             for (const callback of callbacks) {
