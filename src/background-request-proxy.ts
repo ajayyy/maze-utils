@@ -1,8 +1,16 @@
-import { objectToURI } from ".";
+import { isFirefoxOrSafari, objectToURI } from ".";
 import { getHash } from "./hash";
 
 export interface FetchResponse {
     responseText: string;
+    headers: Record<string, string> | null;
+    status: number;
+    ok: boolean;
+}
+
+export interface FetchResponseBinary {
+    responseBinary: Blob | number[];
+    headers: Record<string, string> | null;
     status: number;
     ok: boolean;
 }
@@ -40,14 +48,30 @@ export function setupBackgroundRequestProxy() {
     chrome.runtime.onMessage.addListener((request, sender, callback) => {
         if (request.message === "sendRequest") {
             sendRealRequestToCustomServer(request.type, request.url, request.data, request.headers).then(async (response) => {
+                const buffer = request.binary 
+                    ? (isFirefoxOrSafari()
+                        ? await response.blob()
+                        : Array.from(new Uint8Array(await response.arrayBuffer())))
+                    : null;
+
                 callback({
-                    responseText: await response.text(),
+                    responseText: !request.binary ? await response.text() : "",
+                    responseBinary: buffer,
+                    headers: (request.returnHeaders && response.headers)
+                            ? [...response.headers.entries()].reduce((acc, [key, value]) => {
+                                acc[key] = value;
+                                return acc;
+                            }
+                        , {})
+                        : null,
                     status: response.status,
                     ok: response.ok
                 });
             }).catch(() => {
                 callback({
                     responseText: "",
+                    responseBinary: null,
+                    headers: null,
                     status: -1,
                     ok: false
                 });
@@ -79,6 +103,27 @@ export function sendRequestToCustomServer(type: string, url: string, data = {}, 
             url,
             data,
             headers
+        }, (response) => {
+            if (response.status !== -1) {
+                resolve(response);
+            } else {
+                reject(response);
+            }
+        });
+    });
+}
+
+export function sendBinaryRequestToCustomServer(type: string, url: string, data = {}, headers = {}): Promise<FetchResponseBinary> {
+    return new Promise((resolve, reject) => {
+        // Ask the background script to do the work
+        chrome.runtime.sendMessage({
+            message: "sendRequest",
+            type,
+            url,
+            data,
+            headers,
+            binary: true,
+            returnHeaders: true
         }, (response) => {
             if (response.status !== -1) {
                 resolve(response);
