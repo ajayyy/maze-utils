@@ -1,4 +1,5 @@
 import { isFirefoxOrSafari, objectToURI } from ".";
+import { isSafari } from "./config";
 import { getHash } from "./hash";
 
 export interface FetchResponse {
@@ -49,7 +50,7 @@ export function setupBackgroundRequestProxy() {
         if (request.message === "sendRequest") {
             sendRealRequestToCustomServer(request.type, request.url, request.data, request.headers).then(async (response) => {
                 const buffer = request.binary 
-                    ? (isFirefoxOrSafari()
+                    ? ((isFirefoxOrSafari() && !isSafari())
                         ? await response.blob()
                         : Array.from(new Uint8Array(await response.arrayBuffer())))
                     : null;
