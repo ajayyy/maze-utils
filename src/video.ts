@@ -24,6 +24,7 @@ export enum ChannelIDStatus {
 }
 export interface ChannelIDInfo {
     id: ChannelID | null;
+    author: string | null;
     status: ChannelIDStatus;
 }
 export interface ParsedVideoURL {
@@ -212,7 +213,8 @@ function resetValues() {
     pageType = PageType.Unknown;
     channelIDInfo = {
         status: ChannelIDStatus.Fetching,
-        id: null
+        id: null,
+        author: null
     };
     isLivePremiere = false;
     isInline = false;
@@ -381,26 +383,32 @@ export async function whitelistCheck() {
 
         // If found, continue on, it was set by the listener
     } catch (e) {
-        // try to get channelID from page-manager
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const pageMangerChannelID = (document.querySelector("ytd-page-manager") as any)?.data?.playerResponse?.videoDetails?.channelId
+        const videoButtonHref = (document.querySelector("#social-links yt-button-shape a"))?.getAttribute("href")
+        let channelIDFallback: string | null | undefined = null;
+        if (videoButtonHref && videoButtonHref.includes("/channel/")) {
+            channelIDFallback = videoButtonHref.match(/\/channel\/(UC[a-zA-Z0-9_-]{22})/)?.[1] as ChannelID;
+        }
 
         // Try fallback
-        const channelIDFallback = (document.querySelector("a.ytd-video-owner-renderer") // YouTube
+        channelIDFallback ??= (document.querySelector("a.ytd-video-owner-renderer") // YouTube
             ?? document.querySelector("a.ytp-title-channel-logo") // YouTube Embed
             ?? document.querySelector(".channel-profile #channel-name")?.parentElement?.parentElement // Invidious
             ?? document.querySelector("a.slim-owner-icon-and-title")) // Mobile YouTube
                 ?.getAttribute("href")?.match(/\/(?:(?:channel|c|user|)\/|@)(UC[a-zA-Z0-9_-]{22}|[a-zA-Z0-9_-]+)/)?.[1];
+        
+        const authorFallback = (document.querySelector("ytd-channel-name a.yt-formatted-string") as HTMLElement)?.innerText
 
         if (channelIDFallback) {
             channelIDInfo = {
                 status: ChannelIDStatus.Found,
-                id: (pageMangerChannelID ?? channelIDFallback) as ChannelID
+                id: channelIDFallback as ChannelID,
+                author: authorFallback
             };
         } else {
             channelIDInfo = {
                 status: ChannelIDStatus.Failed,
-                id: null
+                id: null,
+                author: null
             };
         }
     }
@@ -557,6 +565,7 @@ function windowListenerHandler(event: MessageEvent): void {
         if (data.channelID) {
             channelIDInfo = {
                 id: data.channelID,
+                author: data.channelTitle,
                 status: ChannelIDStatus.Found
             };
 
