@@ -68,12 +68,23 @@ interface MetadataWaiting {
     videoID: VideoID;
     callbacks: Array<(metadata: VideoMetadata) => void>;
 }
-
 const waitingForMetadata: MetadataWaiting[] = [];
-
-//todo: move this to maze-utils, send out postmessage when starting to fetch, if another already started, wait for it
+let claimMainMetadataFetcher = false;
 
 export function setupMetadataOnRecieve() {
+    // Try to claim fetcher for channel data
+    const documentScript = document.getElementById("sponsorblock-document-script");
+    if (documentScript) {
+        const claim = documentScript.getAttribute("claim-id");
+        if (!claim || claim === chrome.runtime.id) {
+            claimMainMetadataFetcher = true;
+            
+            if (!claim) {
+                documentScript.setAttribute("claim-id", chrome.runtime.id);
+            }
+        }
+    }
+
     const onMessage = (event: MessageEvent) => {
         if (event.data?.type === "maze-utils:video-metadata-received") {
             const data = event.data;
@@ -114,15 +125,24 @@ export function setupMetadataOnRecieve() {
 }
 
 const activeRequests: Record<VideoID, Promise<VideoMetadata>> = {};
-export async function fetchVideoMetadata(videoID: VideoID, ignoreCache: boolean): Promise<VideoMetadata> {
+export async function fetchVideoMetadata(videoID: VideoID, ignoreCache: boolean, waitForOtherScript = false): Promise<VideoMetadata> {
     const cachedData = videoMetadataCache.getFromCache(videoID);
     if (!ignoreCache && cachedData && cachedData.duration !== null) {
         return cachedData;
     }
 
-    const waiting = waitingForMetadata.find((item) => item.videoID === videoID);
-    if (waiting) {
+    let waiting = waitingForMetadata.find((item) => item.videoID === videoID);
+    if (waiting || waitForOtherScript) {
         return new Promise((resolve) => {
+            if (!waiting) {
+                waiting = {
+                    videoID,
+                    callbacks: []
+                };
+
+                waitingForMetadata.push(waiting);
+            }
+
             waiting.callbacks.push((metadata) => {
                 videoMetadataCache.cacheUsed(videoID);
                 resolve(metadata);
@@ -178,22 +198,29 @@ export async function fetchVideoMetadata(videoID: VideoID, ignoreCache: boolean)
                 }, "*");
 
                 return videoCache;
-            } else {
-                window.postMessage({
-                    type: "maze-utils:video-metadata-received",
-                    videoID,
-                    metadata: {
-                        duration: null,
-                        channelID: null,
-                        author: null,
-                        playbackUrls: [],
-                        isLive: null,
-                        isUpcoming: null
-                    }
-                }, "*");
             }
 
-            return [];
+            window.postMessage({
+                type: "maze-utils:video-metadata-received",
+                videoID,
+                metadata: {
+                    duration: null,
+                    channelID: null,
+                    author: null,
+                    playbackUrls: [],
+                    isLive: null,
+                    isUpcoming: null
+                }
+            }, "*");
+
+            return {
+                duration: null,
+                channelID: null,
+                author: null,
+                playbackUrls: [],
+                isLive: null,
+                isUpcoming: null
+            }; 
         })();
 
         activeRequests[videoID] = result;
@@ -391,8 +418,8 @@ export async function getPlaybackFormats(videoID: VideoID,
     return null;
 }
 
-export async function getChannelID(videoID: VideoID): Promise<ChannelInfo> {
-    const metadata = await fetchVideoMetadata(videoID, false);
+export async function getChannelID(videoID: VideoID, waitForOtherScript = false): Promise<ChannelInfo> {
+    const metadata = await fetchVideoMetadata(videoID, false, waitForOtherScript);
 
     if (metadata) {
         return {
@@ -437,4 +464,8 @@ export function isLiveSync(videoID: VideoID): boolean | null {
     }
 
     return null;
+}
+
+export function isMainMetadataFetcher(): boolean {
+    return claimMainMetadataFetcher;
 }

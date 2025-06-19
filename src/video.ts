@@ -5,7 +5,7 @@ import { newThumbnails } from "./thumbnailManagement";
 import { YT_DOMAINS } from "./const";
 import { addCleanupListener, setupCleanupListener } from "./cleanup";
 import { injectScript } from "./scriptInjector";
-import { getChannelID, getChannelIDSync, setupMetadataOnRecieve } from "./metadataFetcher";
+import { getChannelID, getChannelIDSync, isMainMetadataFetcher, setupMetadataOnRecieve } from "./metadataFetcher";
 
 export enum PageType {
     Unknown = "unknown",
@@ -100,6 +100,8 @@ export function setupVideoModule(moduleParams: VideoModuleParams, config: () => 
 
     setupCleanupListener();
 
+    addPageListeners();
+
     // Direct Links after the config is loaded
     void waitFor(() => getConfig().isReady(), 1000, 1).then(() => videoIDChange(getYouTubeVideoID()));
 
@@ -112,8 +114,6 @@ export function setupVideoModule(moduleParams: VideoModuleParams, config: () => 
             // Ignore if not an embed
             .catch(() => {}); // eslint-disable-line @typescript-eslint/no-empty-function
     }
-
-    addPageListeners();
 
     // Register listener for URL change via Navigation API
     const navigationApiAvailable = "navigation" in window;
@@ -383,7 +383,7 @@ export async function whitelistCheck(videoID: VideoID) {
         
         const channelIDPromises = [
             waitFor(() => channelIDInfo.status === ChannelIDStatus.Found, 6000, 20),
-            getChannelID(videoID)
+            getChannelID(videoID, !isMainMetadataFetcher())
         ];
 
         await Promise.race(channelIDPromises);
