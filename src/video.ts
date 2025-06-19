@@ -5,7 +5,7 @@ import { newThumbnails } from "./thumbnailManagement";
 import { YT_DOMAINS } from "./const";
 import { addCleanupListener, setupCleanupListener } from "./cleanup";
 import { injectScript } from "./scriptInjector";
-import { setupMetadataOnRecieve } from "./metadataFetcher";
+import { getChannelID, getChannelIDSync, setupMetadataOnRecieve } from "./metadataFetcher";
 
 export enum PageType {
     Unknown = "unknown",
@@ -200,7 +200,7 @@ async function videoIDChange(id: VideoID | null, isInlineParam = false): Promise
     await waitFor(() => getConfig().isReady(), 5000, 1);
 
     // Update whitelist data when the video data is loaded
-    void whitelistCheck();
+    void whitelistCheck(id);
 
     params.videoIDChange(id);
 
@@ -377,10 +377,28 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
 }
 
 //checks if this channel is whitelisted, should be done only after the channelID has been loaded
-export async function whitelistCheck() {
+export async function whitelistCheck(videoID: VideoID) {
     try {
         waitingForChannelID = true;
-        await waitFor(() => channelIDInfo.status === ChannelIDStatus.Found, 6000, 20);
+        
+        const channelIDPromises = [
+            waitFor(() => channelIDInfo.status === ChannelIDStatus.Found, 6000, 20),
+            getChannelID(videoID)
+        ];
+
+        await Promise.race(channelIDPromises);
+
+        if (channelIDInfo.status !== ChannelIDStatus.Found) {
+            const channelInfo = getChannelIDSync(videoID);
+
+            if (channelInfo) {
+                channelIDInfo = {
+                    status: ChannelIDStatus.Found,
+                    id: channelInfo.channelID as ChannelID,
+                    author: channelInfo.author
+                }
+            }
+        }
 
         // If found, continue on, it was set by the listener
     } catch (e) {
@@ -571,7 +589,7 @@ function windowListenerHandler(event: MessageEvent): void {
             };
 
             if (!waitingForChannelID) {
-                void whitelistCheck();
+                void whitelistCheck(data.videoID);
             }
         }
 
