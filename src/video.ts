@@ -5,6 +5,7 @@ import { newThumbnails } from "./thumbnailManagement";
 import { YT_DOMAINS } from "./const";
 import { addCleanupListener, setupCleanupListener } from "./cleanup";
 import { injectScript } from "./scriptInjector";
+import { setupMetadataOnRecieve } from "./metadataFetcher";
 
 export enum PageType {
     Unknown = "unknown",
@@ -629,6 +630,8 @@ function addPageListeners(): void {
         window.removeEventListener("playerInit", playerInitListener);
         window.removeEventListener("message", windowListenerHandler);
     });
+
+    setupMetadataOnRecieve();
 }
 
 let lastRefresh = 0;
