@@ -248,11 +248,13 @@ export function init(): void {
     window["teardownCB"] = teardown;
 
     // For compatibility with older versions of the document script;
-    const fakeDocScript = document.createElement("div");
-    fakeDocScript.id = "sponsorblock-document-script";
-    fakeDocScript.setAttribute("version", version)
-    const head = (document.head || document.documentElement);
-    head.appendChild(fakeDocScript);
+    if (!document.querySelector("#sponsorblock-document-script")) {
+        const fakeDocScript = document.createElement("div");
+        fakeDocScript.id = "sponsorblock-document-script";
+        fakeDocScript.setAttribute("version", version)
+        const head = (document.head || document.documentElement);
+        head.appendChild(fakeDocScript);
+    }
 
     document.addEventListener("yt-player-updated", setupPlayerClient);
     document.addEventListener("yt-navigate-start", navigationStartSend);
