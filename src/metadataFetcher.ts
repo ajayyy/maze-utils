@@ -109,7 +109,7 @@ export function setupMetadataOnRecieve() {
                 }
             }
 
-        } else if (event.data?.type === "maze-utils:video-metadata-requested") {
+        } else if (event.data?.type === "maze-utils:video-metadata-requested" && !(event.data.videoID in activeRequests)) {
             waitingForMetadata.push({
                 videoID: event.data.videoID,
                 callbacks: []
