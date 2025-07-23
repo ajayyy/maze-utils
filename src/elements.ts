@@ -6,3 +6,23 @@ export function getYouTubeTitleNodeSelector(): string {
 export function getYouTubeTitleNode(): HTMLElement {
     return document.querySelector(getYouTubeTitleNodeSelector()) as HTMLElement;
 }
+
+export function getCurrentPageTitle(): string | null {
+    const titleNode = getYouTubeTitleNode();
+
+    if (titleNode) {
+        const formattedText = titleNode.querySelector("yt-formatted-string.ytd-watch-metadata, .slim-video-information-title .yt-core-attributed-string:not(.cbCustomTitle)") as HTMLElement;
+        if (formattedText) {
+            return formattedText.innerText;
+        } else {
+            for (const elem of titleNode.children) {
+                if (elem.nodeName === "#text" && elem.nodeValue 
+                        && elem.nodeValue.trim() !== "") {
+                    return elem.nodeValue;
+                }
+            }
+        }
+    }
+
+    return null;
+}
