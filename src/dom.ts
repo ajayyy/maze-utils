@@ -69,6 +69,21 @@ function findValidElementFromGenerator<T>(objects: T[] | NodeListOf<HTMLElement>
     return null;
 }
 
+export function findPredicatedElement(selectors: string[], predicate: (element: HTMLElement) => boolean): HTMLElement | null {
+    for (const selector of selectors) {
+        const element = document.querySelector(selector) as HTMLElement;
+        if (element && predicate(element)) {
+            return element;
+        }
+    }
+
+    return null;
+}
+
+export function findNonEmptyElement(selectors: string[]): HTMLElement | null {
+    return findPredicatedElement(selectors, (element) => (element.textContent?.trim() ?? "").length > 0);
+}
+
 interface WaitingElement {
     selector: string;
     visibleCheck: boolean;
