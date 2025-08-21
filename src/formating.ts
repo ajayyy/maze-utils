@@ -44,21 +44,77 @@ export function getFormattedTime(seconds: number, precise?: boolean): string | n
 
 /**
  * Gets the error message in a nice string
+ *
+ * The result should be a single line string, suitable for small display spaces.
  * 
  * @param {int} statusCode 
  * @returns {string} errorMessage
  */
-export function getErrorMessage(statusCode: number, responseText: string): string {
-    const postFix = ((responseText && !(responseText.includes(`cf-wrapper`) || responseText.includes("<!DOCTYPE html>"))) ? "\n\n" + responseText : "");
-    // display response body for 4xx
-    if([400, 409, 0].includes(statusCode)) {
-        return chrome.i18n.getMessage(statusCode + "") + " " + chrome.i18n.getMessage("errorCode") + statusCode + postFix;
-    } else if (statusCode >= 500 && statusCode <= 599) {
-        // 503 == 502
-        if (statusCode == 503) statusCode = 502;
-        return chrome.i18n.getMessage(statusCode + "") + " " + chrome.i18n.getMessage("errorCode") + statusCode
-        + "\n\n" + chrome.i18n.getMessage("statusReminder");
-    } else {
-        return chrome.i18n.getMessage("connectionError") + statusCode + postFix;
+export function getShortErrorMessage(statusCode: number, responseText: string): string {
+    // timeout
+    if (statusCode === 0) {
+        return chrome.i18n.getMessage("0");
     }
+    // prep the strings
+    const errorMessage = (
+        (responseText
+            && !(responseText.includes(`cf-wrapper`) || responseText.includes("<!DOCTYPE html>"))
+            && responseText.length < 64 // this value is very much arbitrary
+        )
+            ? ` ${responseText}`
+            : ""
+    );
+    // use the 502 string for 503s
+    let introString = chrome.i18n.getMessage(`${statusCode === 503 ? 502 : statusCode}`);
+    if (introString === "") {
+        introString = chrome.i18n.getMessage("connectionError");
+    }
+    const errorCodeString = chrome.i18n.getMessage("errorCode").replace("{code}", `${statusCode}${errorMessage}`);
+    return `${introString} ${errorCodeString}`;
+}
+
+/**
+ * Checks if the body is worth displaying to the user/logs
+ *
+ * @param body the body
+ * @returns true if the body should be considered "garbage", false if it's potentially valuable
+ */
+export function isBodyGarbage(body: string): boolean {
+    return body.includes(`cf-wrapper`) || body.includes("<!DOCTYPE html>");
+}
+
+/**
+ * Gets the error message in a nice string
+ * 
+ * The result will be a longer, multiline string, suitable for long-lived error notices or alerts.
+ *
+ * @param {int} statusCode 
+ * @returns {string} errorMessage
+ */
+export function getLongErrorMessage(statusCode: number, responseText: string): string {
+    // timeout
+    if (statusCode === 0) {
+        return chrome.i18n.getMessage("0");
+    }
+    // prep the strings
+    const postFix = (responseText && !isBodyGarbage(responseText)) ? "\n\n" + responseText : "";
+    // use the 502 string for 503s
+    let introString = chrome.i18n.getMessage(`${statusCode === 503 ? 502 : statusCode}`);
+    if (introString === "") {
+        introString = chrome.i18n.getMessage("connectionError");
+    }
+    const errorCodeString = chrome.i18n.getMessage("errorCode").replace("{code}", `${statusCode}`);
+    const reminder = (statusCode === 502 || statusCode === 503) ? `\n\n${chrome.i18n.getMessage("statusReminder")}` : "";
+    return `${introString} ${errorCodeString}${postFix}${reminder}`;
+}
+
+/**
+ * Formats the JS error message in a nice string
+ * 
+ * @param error The error to format
+ * @returns {string} The nice string
+ */
+export function formatJSErrorMessage(error: string | Error): string {
+    const introString =  chrome.i18n.getMessage("connectionError");
+    return `${introString} ${error}`
 }
