@@ -33,7 +33,7 @@ export function getThumbnailElementsToListenFor() {
 
 export function getThumbnailImageSelectors() {
     if (!onMobile()) {
-        return "ytd-thumbnail:not([hidden]) img, ytd-playlist-thumbnail yt-image:not(.blurred-image) img, yt-img-shadow.ytd-hero-playlist-thumbnail-renderer img, ytm-shorts-lockup-view-model img, .yt-thumbnail-view-model__image img";
+        return "ytd-thumbnail:not([hidden]) img, ytd-playlist-thumbnail yt-image:not(.blurred-image) img, yt-img-shadow.ytd-hero-playlist-thumbnail-renderer img, ytm-shorts-lockup-view-model img, yt-thumbnail-view-model img";
     } else {
         return "img.video-thumbnail-img, img.amsterdam-playlist-thumbnail, ytm-shorts-lockup-view-model img";
     }
