@@ -1,5 +1,6 @@
 import { isFirefoxOrSafari, objectToURI } from ".";
 import { isSafari } from "./config";
+import { isBodyGarbage } from "./formating";
 import { getHash } from "./hash";
 
 export interface FetchResponse {
@@ -45,6 +46,43 @@ export async function sendRealRequestToCustomServer(type: string, url: string,
     return response;
 }
 
+/**
+ * Checks whether the value is safe to send using .postMessage()
+ *
+ * @param value The value to check
+ * @returns true if the value is serializable, false otherwise
+ */
+export function isSerializable(value: unknown): boolean {
+    try {
+        window.structuredClone(value);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+interface MaybeError {
+    toString?: () => string,
+}
+
+/**
+ * Ensures the value is serializable by converting to a string if it's not
+ *
+ * Useful for sending errors cause you never really know what "error" you may get with JS
+ *
+ * @param value The value to check
+ * @returns Unmodified value if serializable, stringified version otherwise
+ */
+export function serializeOrStringify<T>(value: T & MaybeError): T | string {
+    return isSerializable(value)
+        ? value
+        : (
+            "toString" in value && typeof value.toString === 'function'
+            ? value.toString()
+            : String(value)
+        );
+}
+
 export function setupBackgroundRequestProxy() {
     chrome.runtime.onMessage.addListener((request, sender, callback) => {
         if (request.message === "sendRequest") {
@@ -68,13 +106,10 @@ export function setupBackgroundRequestProxy() {
                     status: response.status,
                     ok: response.ok
                 });
-            }).catch(() => {
+            }).catch(error => {
+                console.error("Proxied request failed:", error)
                 callback({
-                    responseText: "",
-                    responseBinary: null,
-                    headers: null,
-                    status: -1,
-                    ok: false
+                    error: serializeOrStringify(error),
                 });
             });
 
@@ -83,8 +118,9 @@ export function setupBackgroundRequestProxy() {
 
         if (request.message === "getHash") {
             getHash(request.value, request.times).then(callback).catch((e) => {
+                console.error("Hash request failed:", e)
                 callback({
-                    error: e?.message
+                    error: serializeOrStringify(e),
                 });
             });
 
@@ -105,10 +141,10 @@ export function sendRequestToCustomServer(type: string, url: string, data = {}, 
             data,
             headers
         }, (response) => {
-            if (response.status !== -1) {
-                resolve(response);
+            if ("error" in response) {
+                reject(response.error);
             } else {
-                reject(response);
+                resolve(response);
             }
         });
     });
@@ -126,11 +162,25 @@ export function sendBinaryRequestToCustomServer(type: string, url: string, data 
             binary: true,
             returnHeaders: true
         }, (response) => {
-            if (response.status !== -1) {
-                resolve(response);
+            if ("error" in response) {
+                reject(response.error);
             } else {
-                reject(response);
+                resolve(response);
             }
         });
     });
+}
+
+/**
+ * Formats and `console.warn`s the given request
+ *
+ * Use this to log failed requests.
+ *
+ * @param request The request to log
+ * @param prefix Extension prefix, such as "SB" or "CB". Brackets will be added automatically
+ * @param requestDescription A string describing what the failed request was, such as "segment skip log", which would produce "Server responded ... to a segment skip log request"
+ */
+export function logRequest(request: FetchResponse | FetchResponseBinary, prefix: string, requestDescription: string) {
+    const body = ("responseText" in request && !isBodyGarbage(request.responseText)) ? `: ${request.responseText}` : ""
+    console.warn(`[${prefix}] Server responded with code ${request.status} to a ${requestDescription} request${body}`);
 }
