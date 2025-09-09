@@ -671,6 +671,10 @@ export function getVideoID(): VideoID | null {
     return videoID;
 }
 
+export function setVideoID(id: VideoID | null): void {
+    videoID = id;
+}
+
 export function getVideoDuration(): number {
     return Math.max(0, (video?.duration ?? 0) - adDuration);
 }
@@ -724,6 +728,14 @@ export function getWaitingForChannelID(): boolean {
 
 export function getChannelIDInfo(): ChannelIDInfo {
     return channelIDInfo;
+}
+
+export function setChanelIDInfo(id: string, author: string): void {
+    channelIDInfo = {
+        status: ChannelIDStatus.Found,
+        id: id as ChannelID,
+        author
+    };
 }
 
 export function getIsAdPlaying(): boolean {

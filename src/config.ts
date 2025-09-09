@@ -35,7 +35,7 @@ export class ProtoConfig<T extends SyncStorage, U extends LocalStorage> {
     inDeArrow = false;
 
     constructor (syncDefaults: T, localDefaults: U,
-            migrateOldSyncFormats: (config: T) => void, inDeArrow = false) {
+            migrateOldSyncFormats: (config: T, local?: U) => void, inDeArrow = false) {
         this.syncDefaults = syncDefaults;
         this.localDefaults = localDefaults;
         this.inDeArrow = inDeArrow;
@@ -197,13 +197,13 @@ export class ProtoConfig<T extends SyncStorage, U extends LocalStorage> {
         })]);
     }
     
-    async setupConfig(migrateOldSyncFormats: (config: T) => void): Promise<StorageObjects<T, U>> {
+    async setupConfig(migrateOldSyncFormats: (config: T, local?: U) => void): Promise<StorageObjects<T, U>> {
         if (typeof(chrome) === "undefined") return null as unknown as StorageObjects<T, U>;
     
         await this.fetchConfig();
         this.addDefaults();
         const result = this.configProxy();
-        migrateOldSyncFormats(result.sync);
+        migrateOldSyncFormats(result.sync, result.local);
     
         return result;
     }
