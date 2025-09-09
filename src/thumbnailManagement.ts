@@ -44,11 +44,15 @@ export function setThumbnailListener(listener: ThumbnailListener, onInitialLoad:
 
     if (onMobile()) {
         const eventListener = () => mobileNewThumbnailHandler()
-        window.addEventListener("updateui", eventListener);
+        window.addEventListener("touchstart", eventListener);
+        window.addEventListener("touchend", eventListener);
+        window.addEventListener("scrollend", eventListener);
         window.addEventListener("state-navigateend", eventListener);
 
         addCleanupListener(() => {
-            window.removeEventListener("updateui", eventListener);
+            window.removeEventListener("touchstart", eventListener);
+            window.removeEventListener("touchend", eventListener);
+            window.removeEventListener("scrollend", eventListener);
             window.removeEventListener("state-navigateend", eventListener);
         });
     }
