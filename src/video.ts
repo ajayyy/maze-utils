@@ -686,7 +686,7 @@ export async function extractVideoID(link: HTMLAnchorElement) {
 const imagesWaitingFor = new Map<HTMLImageElement, Promise<void>>();
 function waitForImageSrc(image: HTMLImageElement): Promise<void> {
     const existingPromise = imagesWaitingFor.get(image);
-    if (!existingPromise) {
+    if (existingPromise !== undefined) {
         const result = new Promise<void>((resolve) => {
             const observer = new MutationObserver((mutations) => {
                 if (!chrome.runtime?.id) return;
