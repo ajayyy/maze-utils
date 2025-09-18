@@ -72,7 +72,11 @@ let onMobileYouTube = false;
 let onYTTV = false;
 let onYouTubeMusic = false;
 let pageType: PageType = PageType.Unknown;
-let channelIDInfo: ChannelIDInfo;
+let channelIDInfo: ChannelIDInfo = {
+    status: ChannelIDStatus.Fetching,
+    id: null,
+    author: null
+};
 let waitingForChannelID = false;
 let lastNonInlineVideoID: VideoID | null = null;
 let isInline = false;
