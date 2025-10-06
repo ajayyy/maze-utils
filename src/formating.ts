@@ -80,7 +80,7 @@ export function getShortErrorMessage(statusCode: number, responseText: string): 
  * @returns true if the body should be considered "garbage", false if it's potentially valuable
  */
 export function isBodyGarbage(body: string): boolean {
-    return body.includes(`cf-wrapper`) || body.includes("<!DOCTYPE html>");
+    return body.startsWith("<!DOCTYPE html>") || body.startsWith("<html>") || body.includes(`cf-wrapper`);
 }
 
 /**
