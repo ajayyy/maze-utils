@@ -18,7 +18,7 @@ export function isOnV3Extension(update = false): boolean {
     if (onV3Extension === null || (update && !onV3Extension)) {
         const scripts = document.querySelectorAll("script");
         for (const script of scripts) {
-            if (!script.id.includes("sponsorblock") && script.textContent.includes("VORAPIS")) {
+            if (!script.id.includes("sponsorblock") && script.textContent?.includes("VORAPIS")) {
                 onV3Extension = true;
                 break;
             }
