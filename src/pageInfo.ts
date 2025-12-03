@@ -16,15 +16,7 @@ export function isOnV3Extension(update = false): boolean {
     }
 
     if (onV3Extension === null || (update && !onV3Extension)) {
-        const scripts = document.querySelectorAll("script");
-        for (const script of scripts) {
-            if (!script.id.includes("sponsorblock") && script.textContent?.includes("VORAPIS")) {
-                onV3Extension = true;
-                break;
-            }
-        }
-
-        if (onV3Extension === null) onV3Extension = false;
+        onV3Extension = !!document.querySelector("head > .v3");
     }
 
     return onV3Extension;
