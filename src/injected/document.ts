@@ -68,7 +68,7 @@ let lastVideo = "";
 let lastInline = false;
 let lastLive = false;
 const id = "sponsorblock";
-let elementsToListenFor = getThumbnailElementsToListenFor();
+const elementsToListenFor = getThumbnailElementsToListenFor();
 
 // From BlockTube https://github.com/amitbl/blocktube/blob/9dc6dcee1847e592989103b0968092eb04f04b78/src/scripts/seed.js#L52-L58
 const fetchUrlsToRead = [
@@ -228,6 +228,7 @@ const savedSetup = {
 };
 
 let hasSetupCustomElementListener = false;
+let hasSetupListener = false;
 let thumbnailMutationObserver: MutationObserver | null = null;
 
 // WARNING: Putting any parameters here will not work because SponsorBlock and the clickbait extension share document scripts
@@ -279,20 +280,20 @@ export function init(): void {
             createMutationObserver();
         } else {
             const notCreatedYetCheck = setTimeout(() => {
-                if (!hasSetupCustomElementListener) {
+                if (!hasSetupCustomElementListener && !hasSetupListener) {
                     createMutationObserver();
                 }
             }, 2000);
 
-            setTimeout(() => {
-                if (isOnV3Extension(true)) {
-                    elementsToListenFor = getThumbnailElementsToListenFor();
-
+            const onV3Check = () => {
+                if (!hasSetupListener && !hasSetupCustomElementListener && isOnV3Extension(true)) {
+                    hasSetupListener = true;
                     createMutationObserver();
                     clearTimeout(notCreatedYetCheck);
                 }
-
-            }, 100);
+            };
+            setTimeout(() => onV3Check(), 100);
+            setTimeout(() => onV3Check(), 1000);
 
             // If customElement.define() is native, we will be given a class constructor and should extend it.
             // If it is not native, we will be given a function and should wrap it.

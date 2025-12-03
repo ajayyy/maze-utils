@@ -2,18 +2,13 @@ import { isOnV3Extension, onMobile } from "../../maze-utils/src/pageInfo";
 
 export function getThumbnailElements() {
     if (!onMobile()) {
-        if (!isOnV3Extension()) {
-            return [
-                "ytd-thumbnail", 
-                "ytd-playlist-thumbnail",
-                "ytm-shorts-lockup-view-model",
-                "yt-thumbnail-view-model",
-            ];
-        } else {
-            return [
-                ".ux-thumb-wrap"
-            ];
-        }
+        return [
+            "ytd-thumbnail", 
+            "ytd-playlist-thumbnail",
+            "ytm-shorts-lockup-view-model",
+            "yt-thumbnail-view-model",
+            ".ux-thumb-wrap" // V3 extension
+        ];
     } else {
         return [
             ".media-item-thumbnail-container",
