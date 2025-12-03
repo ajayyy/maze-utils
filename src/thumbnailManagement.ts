@@ -9,7 +9,7 @@ export type ThumbnailListener = (newThumbnails: HTMLElement[]) => void;
 const handledThumbnails = new Map<HTMLElement, MutationObserver>();
 let lastGarbageCollection = 0;
 let thumbnailListener: ThumbnailListener | null = null;
-let selector = getThumbnailSelectors();
+let selector = "";
 let invidiousSelector = "div.thumbnail";
 
 export function getThumbnailSelector(): string {
@@ -20,7 +20,11 @@ export function setThumbnailListener(listener: ThumbnailListener, onInitialLoad:
         configReady: () => boolean, selectorParam?: string,
             invidiousSelectorParam?: string): void {
     thumbnailListener = listener;
-    if (selectorParam) selector = selectorParam;
+    if (selectorParam) {
+        selector = selectorParam;
+    } else {
+        selector = getThumbnailSelectors();
+    }
     if (invidiousSelectorParam) invidiousSelector = invidiousSelectorParam;
 
     const onLoad = () => {

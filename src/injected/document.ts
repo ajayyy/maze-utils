@@ -8,7 +8,7 @@ import { PageType } from "../video";
 import { version } from "../version.json";
 import { YT_DOMAINS } from "../const";
 import { getThumbnailElementsToListenFor } from "../thumbnail-selectors";
-import { onMobile, onYouTubeCableTV } from "../pageInfo";
+import { isOnV3Extension, onMobile, onYouTubeCableTV } from "../pageInfo";
 import { resetLastArtworkSrc, resetMediaSessionThumbnail, setMediaSessionInfo } from "./mediaSession";
 import { isVisible } from "../dom";
 
@@ -68,7 +68,7 @@ let lastVideo = "";
 let lastInline = false;
 let lastLive = false;
 const id = "sponsorblock";
-const elementsToListenFor = getThumbnailElementsToListenFor();
+let elementsToListenFor = getThumbnailElementsToListenFor();
 
 // From BlockTube https://github.com/amitbl/blocktube/blob/9dc6dcee1847e592989103b0968092eb04f04b78/src/scripts/seed.js#L52-L58
 const fetchUrlsToRead = [
@@ -278,11 +278,21 @@ export function init(): void {
             // Old versions of Chrome that don't support "world" option for content scripts
             createMutationObserver();
         } else {
-            setTimeout(() => {
+            const notCreatedYetCheck = setTimeout(() => {
                 if (!hasSetupCustomElementListener) {
                     createMutationObserver();
                 }
             }, 2000);
+
+            setTimeout(() => {
+                if (isOnV3Extension(true)) {
+                    elementsToListenFor = getThumbnailElementsToListenFor();
+
+                    createMutationObserver();
+                    clearTimeout(notCreatedYetCheck);
+                }
+
+            }, 100);
 
             // If customElement.define() is native, we will be given a class constructor and should extend it.
             // If it is not native, we will be given a function and should wrap it.
@@ -466,7 +476,8 @@ function createMutationObserver() {
             for (const node of mutation.addedNodes) {
                 if (node instanceof HTMLElement) {
                     for (const name of elementsToListenFor) {
-                        if (node.tagName.toLowerCase() === name || node.querySelector(name)) {
+                        if (node.tagName.toLowerCase() === name || node.querySelector(name)
+                                || (name.startsWith(".") && node.classList.contains(name.slice(1)))) {
                             sendMessage({ type: "newElement", name });
                             return;
                         }

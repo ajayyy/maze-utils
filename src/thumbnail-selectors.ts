@@ -1,13 +1,19 @@
-import { onMobile } from "../../maze-utils/src/pageInfo";
+import { isOnV3Extension, onMobile } from "../../maze-utils/src/pageInfo";
 
 export function getThumbnailElements() {
     if (!onMobile()) {
-        return [
-            "ytd-thumbnail", 
-            "ytd-playlist-thumbnail",
-            "ytm-shorts-lockup-view-model",
-            "yt-thumbnail-view-model"
-        ];
+        if (!isOnV3Extension()) {
+            return [
+                "ytd-thumbnail", 
+                "ytd-playlist-thumbnail",
+                "ytm-shorts-lockup-view-model",
+                "yt-thumbnail-view-model",
+            ];
+        } else {
+            return [
+                ".ux-thumb-wrap"
+            ];
+        }
     } else {
         return [
             ".media-item-thumbnail-container",
@@ -33,7 +39,11 @@ export function getThumbnailElementsToListenFor() {
 
 export function getThumbnailImageSelectors() {
     if (!onMobile()) {
-        return "ytd-thumbnail:not([hidden]) img, ytd-playlist-thumbnail yt-image:not(.blurred-image) img, yt-img-shadow.ytd-hero-playlist-thumbnail-renderer img, ytm-shorts-lockup-view-model img, yt-thumbnail-view-model *:not(.ytThumbnailViewModelBlurredImage) img";
+        if (!isOnV3Extension()) {
+            return "ytd-thumbnail:not([hidden]) img, ytd-playlist-thumbnail yt-image:not(.blurred-image) img, yt-img-shadow.ytd-hero-playlist-thumbnail-renderer img, ytm-shorts-lockup-view-model img, yt-thumbnail-view-model *:not(.ytThumbnailViewModelBlurredImage) img";
+        } else {
+            return ".ux-thumb-wrap img:not(.cbCustomThumbnailCanvas)";
+        }
     } else {
         return "img.video-thumbnail-img, img.amsterdam-playlist-thumbnail, ytm-shorts-lockup-view-model img";
     }
