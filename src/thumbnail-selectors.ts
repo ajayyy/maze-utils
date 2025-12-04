@@ -53,7 +53,8 @@ export function getThumbnailLink(thumbnail: HTMLElement): HTMLElement | null {
             "ytm-channel-featured-video-renderer a",
             "a.compact-media-item-image",
             "a.reel-item-endpoint",
-            ".amsterdam-playlist-thumbnail-wrapper a"
+            ".amsterdam-playlist-thumbnail-wrapper a",
+            "a.YtmCompactMediaItemMetadataContent"
         ].join(", "));
     }
 }
