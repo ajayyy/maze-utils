@@ -61,9 +61,13 @@ export function timeoutPomise<T>(timeout?: number): Promise<T> {
 /**
 * web-extensions
 */
+const onFirefoxOrSafari = chrome.runtime.getManifest().browser_specific_settings;
+const onFirefox = chrome.runtime.getManifest().browser_specific_settings?.gecko;
+export function isFirefox(): boolean {
+    return onFirefox;
+}
 export function isFirefoxOrSafari(): boolean {
-    // @ts-ignore
-    return typeof(browser) !== "undefined";
+    return onFirefoxOrSafari;
 }
 
 let cachedUserAgent: string;
