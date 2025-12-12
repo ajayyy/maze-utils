@@ -58,9 +58,6 @@ export function timeoutPomise<T>(timeout?: number): Promise<T> {
     });
 }
 
-/**
-* web-extensions
-*/
 const onFirefoxOrSafari = typeof(chrome) !== "undefined" && !!chrome.runtime.getManifest().browser_specific_settings;
 const onFirefox = typeof(chrome) !== "undefined" && !!chrome.runtime.getManifest().browser_specific_settings?.gecko;
 export function isFirefox(): boolean {
