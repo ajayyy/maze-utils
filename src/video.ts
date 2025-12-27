@@ -5,7 +5,7 @@ import { newThumbnails } from "./thumbnailManagement";
 import { YT_DOMAINS } from "./const";
 import { addCleanupListener, setupCleanupListener } from "./cleanup";
 import { injectScript } from "./scriptInjector";
-import { getChannelID, getChannelIDSync, isMainMetadataFetcher, setupMetadataOnRecieve } from "./metadataFetcher";
+import { getChannelNameFromVideo, getUcidFromVideo, setupMetadataOnRecieve } from "./metadataFetcher";
 
 export enum PageType {
     Unknown = "unknown",
@@ -382,24 +382,31 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
 
 //checks if this channel is whitelisted, should be done only after the channelID has been loaded
 export async function whitelistCheck(videoID: VideoID) {
+    if (channelIDInfo.status === ChannelIDStatus.Found) return;
     try {
         waitingForChannelID = true;
         
+        const fetchPromises = {
+            id: getUcidFromVideo(videoID),
+            author: getChannelNameFromVideo(videoID),
+        }
         const channelIDPromises = [
             waitFor(() => channelIDInfo.status === ChannelIDStatus.Found, 6000, 20),
-            getChannelID(videoID, !isMainMetadataFetcher())
+            Promise.all(Object.values(fetchPromises)),
         ];
 
         await Promise.race(channelIDPromises);
 
+        // @ts-expect-error race condition or smth idk, theres an await above
         if (channelIDInfo.status !== ChannelIDStatus.Found) {
-            const channelInfo = getChannelIDSync(videoID);
-
-            if (channelInfo) {
+            const fetchedInfo = {
+                id: fetchPromises.id.peek(),
+                author: fetchPromises.author.peek(),
+            }
+            if (fetchedInfo.id !== null && fetchedInfo.author !== null) {
                 channelIDInfo = {
                     status: ChannelIDStatus.Found,
-                    id: channelInfo.channelID as ChannelID,
-                    author: channelInfo.author
+                    ...fetchedInfo
                 }
             }
         }
