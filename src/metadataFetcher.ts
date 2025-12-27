@@ -1,6 +1,7 @@
-import { DataCache } from "./cache";
+import { DataCache, PeekPromise } from "./cache";
 import { addCleanupListener } from "./cleanup";
 import { isSafari } from "./config";
+import { isBodyGarbage } from "./formating";
 import { onMobile } from "./pageInfo";
 import type { ChannelID, VideoID } from "./video";
 
@@ -55,6 +56,14 @@ export interface ChannelInfo {
     author: string | null;
 }
 
+export interface OembedData {
+    author_url: string;
+    parsed: {
+        // the @handle of the uploader
+        channelHandle: string | null;
+    };
+}
+
 export const videoMetadataCache = new DataCache<VideoID, VideoMetadata>(() => ({
     playbackUrls: [],
     duration: null,
@@ -62,6 +71,21 @@ export const videoMetadataCache = new DataCache<VideoID, VideoMetadata>(() => ({
     author: null,
     isLive: null,
     isUpcoming: null
+}));
+const oembedCache = new DataCache<VideoID, { data: PeekPromise<OembedData | null> | null }>(() => ({
+    data: null,
+}));
+const channelResolveCache = new DataCache<string, { data: PeekPromise<ChannelID | null> | null }>(() => ({
+    data: null,
+}));
+const ucidFromVideoCache = new DataCache<VideoID, { data: PeekPromise<ChannelID | null> | null }>(() => ({
+    data: null,
+}));
+const channelNameFromUcidCache = new DataCache<ChannelID, { data: PeekPromise<string | null> | null }>(() => ({
+    data: null,
+}));
+const channelNameFromVideoCache = new DataCache<VideoID, { data: PeekPromise<string | null> | null }>(() => ({
+    data: null,
 }));
 
 interface MetadataWaiting {
@@ -399,6 +423,153 @@ export async function fetchVideoDataDesktopClient(videoID: VideoID): Promise<Inn
     };
 }
 
+async function doFetchOembed(videoID: VideoID): Promise<OembedData> {
+    const url = new URL("https://www.youtube.com/oembed");
+    url.searchParams.set("url", `https://youtu.be/${videoID}`);
+    
+    const resp = await fetch(url, {
+        headers: {
+            'Content-Type': 'application/json'
+        },
+    });
+    if (!resp.ok) {
+        const body = await resp.text();
+        throw new Error(`OEmbed request failed: Got response code ${resp.status} ${resp.statusText}${isBodyGarbage(body) ? "" : ` with body ${body}`}`);
+    }
+    const data = await resp.json() as OembedData;
+    data.parsed = {
+        channelHandle: null,
+    }
+    try {
+        const channelUrl = new URL(data.author_url);
+        if (channelUrl.pathname.startsWith("/@") && channelUrl.pathname.lastIndexOf("/") === 0) {
+            data.parsed.channelHandle = decodeURIComponent(channelUrl.pathname.substring(1));
+        } else {
+            console.warn(`[maze-utils] author_url for video ${videoID} was not a channel handle URL`);
+        }
+    } catch (e) {
+        console.error(`[maze-utils] Caught error while parsing OEmbed data for video ${videoID}:`, e);
+    }
+    return data;
+}
+
+export function fetchOembed(videoID: VideoID): PeekPromise<OembedData | null> {
+    const entry = oembedCache.setupCache(videoID);
+    entry.data ??= new PeekPromise(doFetchOembed(videoID).catch(err => {
+        console.error(`[maze-utils] OEmbed data request for video ${videoID} failed:`, err)
+        return null;
+    }))
+    oembedCache.cacheUsed(videoID);
+    return entry.data;
+}
+
+export function isUCID(ucid: string): ucid is ChannelID {
+    return /^UC[0-9A-Za-z-]{22}$/.test(ucid);
+}
+
+async function doResolveHandle(channelHandle: string): Promise<ChannelID> {
+    const url = "https://www.youtube.com/youtubei/v1/navigation/resolve_url?prettyPrint=false";
+    const data = {
+        context: {
+            client: {
+                clientName: "WEB",
+                clientVersion: "2.20230327.07.00"
+            }
+        },
+        url: `https://www.youtube.com/${encodeURIComponent(channelHandle)}`,
+    };
+
+    const resp = await fetch(url, {
+        body: JSON.stringify(data),
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        method: "POST",
+    });
+    if (!resp.ok) {
+        const body = await resp.text();
+        throw new Error(`Innertube resolve URL request failed: Got response code ${resp.status} ${resp.statusText}${isBodyGarbage(body) ? "" : ` with body ${body}`}`);
+    }
+    const resolved = await resp.json();
+    const ucid = resolved.endpoint.browseEndpoint.browseId as string;
+    // sanity check
+    // https://github.com/yt-dlp/yt-dlp/blob/a065086640e888e8d58c615d52ed2f4f4e4c9d18/yt_dlp/extractor/youtube.py#L518-L519
+    if (!isUCID(ucid)) {
+        throw new Error(`Innertube response contained a seemingly invalid UCID: ${ucid}`);
+    }
+    return ucid;
+}
+
+export function resolveHandle(channelHandle: string): PeekPromise<ChannelID | null> {
+    const entry = channelResolveCache.setupCache(channelHandle);
+    entry.data ??= new PeekPromise(doResolveHandle(channelHandle).catch(err => {
+        console.error(`[maze-utils] Innertube resolve URL request for channel handle ${channelHandle} failed:`, err)
+        return null;
+    }))
+    channelResolveCache.cacheUsed(channelHandle);
+    return entry.data;
+}
+
+export function getUcidFromVideo(videoID: VideoID): PeekPromise<ChannelID | null> {
+    const entry = ucidFromVideoCache.setupCache(videoID);
+    entry.data ??= new PeekPromise((async () => {
+        const oembedData = await fetchOembed(videoID);
+        if (oembedData?.parsed.channelHandle == null) return null;
+        return await resolveHandle(oembedData.parsed.channelHandle);
+    })())
+    ucidFromVideoCache.cacheUsed(videoID);
+    return entry.data;
+}
+
+async function doFetchChannelName(ucid: ChannelID): Promise<string> {
+    const url = "https://www.youtube.com/youtubei/v1/browse?prettyPrint=false";
+    const data = {
+        context: {
+            client: {
+                clientName: "WEB",
+                clientVersion: "2.20230327.07.00"
+            }
+        },
+        browseId: ucid,
+        param: "", // home page, since we don't need a specific one
+    };
+
+    const resp = await fetch(url, {
+        body: JSON.stringify(data),
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        method: "POST",
+    });
+    if (!resp.ok) {
+        const body = await resp.text();
+        throw new Error(`Innertube channel browse request failed: Got response code ${resp.status} ${resp.statusText}${isBodyGarbage(body) ? "" : ` with body ${body}`}`);
+    }
+    const resolved = await resp.json();
+    return resolved.microformat.microformatDataRenderer.title;
+}
+
+export function fetchChannelName(ucid: ChannelID): PeekPromise<string | null> {
+    const entry = channelNameFromUcidCache.setupCache(ucid);
+    entry.data ??= new PeekPromise(doFetchChannelName(ucid).catch(err => {
+        console.error(`[maze-utils] Innertube channel browse request for UCID ${ucid} failed:`, err)
+        return null;
+    }))
+    channelNameFromUcidCache.cacheUsed(ucid);
+    return entry.data;
+}
+
+export function getChannelNameFromVideo(videoID: VideoID): PeekPromise<string | null> {
+    const entry = channelNameFromVideoCache.setupCache(videoID);
+    entry.data ??= new PeekPromise((async () => {
+        const ucid = await getUcidFromVideo(videoID);
+        if (ucid === null) return null;
+        return await fetchChannelName(ucid);
+    })())
+    channelNameFromVideoCache.cacheUsed(videoID);
+    return entry.data;
+}
+
 export async function getPlaybackFormats(videoID: VideoID,
     width?: number, height?: number, ignoreCache = false): Promise<Format | null> {
     const formats = await fetchVideoMetadata(videoID, ignoreCache);
@@ -413,35 +584,6 @@ export async function getPlaybackFormats(videoID: VideoID,
         }
     } else if (formats?.playbackUrls?.length > 0) {
         return formats[0];
-    }
-
-    return null;
-}
-
-export async function getChannelID(videoID: VideoID, waitForOtherScript = false): Promise<ChannelInfo> {
-    const metadata = await fetchVideoMetadata(videoID, false, waitForOtherScript);
-
-    if (metadata) {
-        return {
-            channelID: metadata.channelID,
-            author: metadata.author
-        };
-    }
-
-    return {
-        channelID: null,
-        author: null
-    };
-}
-
-export function getChannelIDSync(videoID: VideoID): ChannelInfo | null {
-    const cachedData = videoMetadataCache.getFromCache(videoID);
-
-    if (cachedData) {
-        return {
-            channelID: cachedData.channelID,
-            author: cachedData.author
-        };
     }
 
     return null;
