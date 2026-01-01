@@ -4,6 +4,8 @@ import { isSafari } from "./config";
 import { isBodyGarbage } from "./formating";
 import { onMobile } from "./pageInfo";
 import type { ChannelID, VideoID } from "./video";
+import { version } from "./version.json";
+import { versionHigher } from "./versionHigher";
 
 export interface PlaybackUrl {
     url: string;
@@ -64,6 +66,111 @@ export interface OembedData {
     };
 }
 
+interface Request {
+    type: "oembed" | "resolve" | "browse";
+    query: string;
+}
+
+type Response = {
+    result: OembedData | string | null;
+    lastUsed: number;
+} & Request;
+
+interface FetcherMessageSimple {
+    type: "init" | "leaderAlive" | "triggerElection";
+}
+
+interface FetcherMessageLeaderIdentify {
+    type: "meIsLeader";
+    version: string;
+}
+
+interface FetcherMessageRequest {
+    type: "request" | "cacheBump";
+    request: Request;
+}
+
+interface FetcherMessageCacheUpdate {
+    type: "cacheUpdate";
+    updates: Response[];
+}
+
+interface FetcherMessageElection {
+    type: "submitElection" | "restartElection";
+    version: string;
+    random: number;
+}
+
+type FetcherMessage = FetcherMessageSimple | FetcherMessageLeaderIdentify | FetcherMessageRequest | FetcherMessageCacheUpdate | FetcherMessageElection;
+
+type QueuedRequest = {
+    resolve: (data: OembedData | string | null) => void;
+    reject: (error: Error) => void;
+} & Request;
+
+// the video module has not been initialized yet - fetcher is working independently
+interface FetcherStatusDetached {
+    stage: "detached";
+}
+
+// the fetcher has just joined the channel and is awaiting a response from an already elected leader
+// requests are queued without being processed
+interface FetcherStatusInitial {
+    stage: "init";
+    channel: BroadcastChannel;
+    requestTimeout: NodeJS.Timeout;
+}
+
+// an election has been triggered and is in progress
+// the most up-to-date instance will win - in case of a tie, the instance that gets the highest random number wins
+// requests are queued without being processed
+interface FetcherStatusElection {
+    stage: "election";
+    channel: BroadcastChannel;
+    random: number;
+    winning: boolean;
+    attempts: number;
+    // when this expires, if this instance won, broadcast results
+    concludeTimeout: NodeJS.Timeout;
+    // when this expires and we're still in election mode, trigger election again
+    retriggerTimeout: NodeJS.Timeout;
+}
+
+// this instance was picked as the leader and will process requests from all instances
+interface FetcherStatusLeader {
+    stage: "leader";
+    channel: BroadcastChannel;
+    keepaliveInterval: NodeJS.Timer;
+}
+
+// a different instance was picked as the leader - this instance will redirect fetches to the leader
+interface FetcherStatusPassive {
+    stage: "passive";
+    channel: BroadcastChannel;
+    keepaliveReceived: boolean;
+    keepaliveCheckInterval: NodeJS.Timer;
+}
+
+type FetcherCache<Key extends string, Value> = DataCache<Key, { data: PeekPromise<Value | null> | null }>;
+interface FetcherState {
+    status: FetcherStatusDetached | FetcherStatusInitial | FetcherStatusElection | FetcherStatusLeader | FetcherStatusPassive;
+    cache: {
+        // single-fetch, shared between maze-utils instances
+        basic: {
+            oembed: FetcherCache<VideoID, OembedData>;
+            resolveChannel: FetcherCache<string, ChannelID>;
+            channelName: FetcherCache<ChannelID, string>;
+        };
+        // chained fetched cached above, not shared
+        chained: {
+            ucidFromVideo: FetcherCache<VideoID, ChannelID>;
+            nameFromVideo: FetcherCache<VideoID, string>;
+        };
+    };
+    pendingRequests: Map<string, QueuedRequest[]>;
+    queuedRequests: QueuedRequest[];
+}
+
 export const videoMetadataCache = new DataCache<VideoID, VideoMetadata>(() => ({
     playbackUrls: [],
     duration: null,
@@ -72,21 +179,6 @@ export const videoMetadataCache = new DataCache<VideoID, VideoMetadata>(() => ({
     isLive: null,
     isUpcoming: null
 }));
-const oembedCache = new DataCache<VideoID, { data: PeekPromise<OembedData | null> | null }>(() => ({
-    data: null,
-}));
-const channelResolveCache = new DataCache<string, { data: PeekPromise<ChannelID | null> | null }>(() => ({
-    data: null,
-}));
-const ucidFromVideoCache = new DataCache<VideoID, { data: PeekPromise<ChannelID | null> | null }>(() => ({
-    data: null,
-}));
-const channelNameFromUcidCache = new DataCache<ChannelID, { data: PeekPromise<string | null> | null }>(() => ({
-    data: null,
-}));
-const channelNameFromVideoCache = new DataCache<VideoID, { data: PeekPromise<string | null> | null }>(() => ({
-    data: null,
-}));
 
 interface MetadataWaiting {
     videoID: VideoID;
@@ -94,6 +186,431 @@ interface MetadataWaiting {
 }
 const waitingForMetadata: MetadataWaiting[] = [];
 let claimMainMetadataFetcher = false;
+const fetcherState: FetcherState = {
+    status: {
+        stage: "detached",
+    },
+    cache: {
+        basic: {
+            oembed: new DataCache(() => ({ data: null })),
+            resolveChannel: new DataCache(() => ({ data: null })),
+            channelName: new DataCache(() => ({ data: null })),
+        },
+        chained: {
+            ucidFromVideo: new DataCache(() => ({ data: null })),
+            nameFromVideo: new DataCache(() => ({ data: null })),
+        },
+    },
+    pendingRequests: new Map(),
+    queuedRequests: [],
+};
+
+
+// attaches the fetcher to the shared broadcast channel, enabling cache sharing
+function attachFetcher() {
+    if (fetcherState.status.stage !== "detached") return;
+    const channel = new BroadcastChannel("maze-utils:metadata-fetcher");
+    channel.addEventListener("message", onFetcherMessage)
+    clearFetcherStateIntervals();
+    fetcherState.status = {
+        stage: "init",
+        channel,
+        requestTimeout: setTimeout(() => {
+            if (fetcherState.status.stage === "init") {
+                console.debug("[maze-utils/fetcher] no response after 500ms, triggering election")
+                runFetcherElection()
+            }
+        }, 500),
+    };
+    channel.postMessage({ type: "init" } as FetcherMessage);
+    console.debug("[maze-utils/fetcher] attaching: init message sent")
+}
+
+// detaches the fetcher from the shared broadcast channel
+function detachFetcher() {
+    console.debug("[maze-utils/fetcher] detaching")
+    clearFetcherStateIntervals();
+    // if we are the leader, trigger an election
+    if (fetcherState.status.stage === "leader") {
+        fetcherState.status.channel.postMessage({ type: "triggerElection" } as FetcherMessage);
+    }
+    // transition to detached state, if not detached already
+    if (fetcherState.status.stage !== "detached") {
+        fetcherState.status.channel.close();
+        fetcherState.status = {
+            stage: "detached",
+        }
+    }
+}
+
+function clearFetcherStateIntervals() {
+    switch(fetcherState.status.stage) {
+        case "leader":
+            clearInterval(fetcherState.status.keepaliveInterval)
+            break;
+        case "passive":
+            clearInterval(fetcherState.status.keepaliveCheckInterval);
+            break;
+        case "init":
+            clearTimeout(fetcherState.status.requestTimeout);
+            break;
+        case "election":
+            clearTimeout(fetcherState.status.retriggerTimeout);
+            clearTimeout(fetcherState.status.concludeTimeout);
+            break;
+    }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-function
+function trustmebro<T>(val: unknown): asserts val is T {}
+
+interface ElectionParams {
+    message?: FetcherMessageElection,
+    restart?: boolean,
+}
+function runFetcherElection(params?: ElectionParams) {
+    // if detached, don't care
+    if (fetcherState.status.stage === "detached") return;
+    clearFetcherStateIntervals();
+    if (fetcherState.status.stage === "election") {
+        // election retry
+        fetcherState.status.attempts += 1;
+        console.debug(`[maze-utils/fetcher] election triggered: attempt #${fetcherState.status.attempts+1}`)
+    } else {
+        // new election
+        fetcherState.status = {
+            stage: "election",
+            channel: fetcherState.status.channel,
+            random: 0,
+            attempts: 0,
+            concludeTimeout: 0 as unknown as NodeJS.Timeout,
+            retriggerTimeout: 0 as unknown as NodeJS.Timeout,
+            winning: true,
+        }
+    }
+    trustmebro<FetcherStatusElection>(fetcherState.status);
+    if (fetcherState.status.attempts > 3) {
+        console.error("[maze-utils/fetcher] election attempt limit reached: detaching");
+        detachFetcher();
+        return;
+    }
+    
+    // generate common values
+    fetcherState.status.winning = true;
+    const rng = new Int32Array(1);
+    crypto.getRandomValues(rng);
+    fetcherState.status.random = Math.random();
+    fetcherState.status.concludeTimeout = setTimeout(() => {
+        if (fetcherState.status.stage === "election" && fetcherState.status.winning) {
+            console.debug("[maze-utils/fetcher] we won the election, broadcasting result");
+            fetcherState.status.channel.postMessage({
+                type: "meIsLeader",
+                version,
+            } as FetcherMessage)
+            // wait a bit for any election retriggers
+            setTimeout(processFetcherQueue, 200);
+            clearFetcherStateIntervals();
+            fetcherState.status = {
+                stage: "leader",
+                channel: fetcherState.status.channel,
+                keepaliveInterval: setInterval(() => {
+                    if (fetcherState.status.stage === "leader") {
+                        fetcherState.status.channel.postMessage({ type: "leaderAlive" } as FetcherMessage);
+                    }
+                }, 5000),
+            }
+        }
+    }, 500 + 200 * Math.random());
+    fetcherState.status.retriggerTimeout = setTimeout(() => {
+        if (fetcherState.status.stage === "election") {
+            console.warn("[maze-utils/fetcher] noone claimed the election win, retriggering");
+            runFetcherElection({restart: true});
+        }
+    }, 2000 + 200 * Math.random());
+
+    if (params?.message !== undefined) {
+        // we got the first election trigger, let's check if we have any chance
+        fetcherState.status.winning = versionHigher(version, params.message.version) || (fetcherState.status.random > params.message.random && !versionHigher(params.message.version, version));
+    }
+    // broadcast our election data
+    if (fetcherState.status.winning) {
+        fetcherState.status.channel.postMessage({
+            type: params?.restart === true ? "restartElection" : "submitElection",
+            version,
+            random: fetcherState.status.random,
+        } as FetcherMessage);
+    }
+    console.debug(`[maze-utils/fetcher] election status, winning: ${fetcherState.status.winning}`);
+}
+
+function processFetcherQueue() {
+    if (fetcherState.status.stage === "election" || fetcherState.status.stage === "init") return;
+    const queue = fetcherState.queuedRequests;
+    fetcherState.queuedRequests = [];
+    if (fetcherState.status.stage === "passive") {
+        for (const req of queue) {
+            const key = `${req.type}+${req.query}`;
+            const pending = fetcherState.pendingRequests.get(key);
+            if (pending != null) {
+                pending.push(req);
+            } else {
+                fetcherState.pendingRequests.set(key, [req]);
+            }
+
+            fetcherState.status.channel.postMessage({
+                type: "request",
+                request: {
+                    type: req.type,
+                    query: req.query,
+                }
+            } as FetcherMessage)
+        }
+    } else {
+        for (const req of queue) {
+            switch (req.type) {
+                case "oembed": {
+                    doFetchOembed(req.query as VideoID).catch(err => {
+                        console.error(`[maze-utils] OEmbed data request for video ${req.query} failed:`, err)
+                        return null;
+                    }).then(req.resolve, req.reject);
+                    break;
+                }
+                case "resolve": {
+                    doResolveHandle(req.query).catch(err => {
+                        console.error(`[maze-utils] Innertube resolve URL request for channel handle ${req.query} failed:`, err)
+                        return null;
+                    }).then(req.resolve, req.reject);
+                    break;
+                }
+                case "browse": {
+                    doFetchChannelName(req.query as ChannelID).catch(err => {
+                        console.error(`[maze-utils] Innertube channel browse request for UCID ${req.query} failed:`, err)
+                        return null;
+                    }).then(req.resolve, req.reject);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+function onFetcherMessage(event: MessageEvent<FetcherMessage>) {
+    switch(event.data.type) {
+        case "init": {
+            // only respond if we're the leader
+            if (fetcherState.status.stage !== "leader") return;
+            console.debug("[maze-utils/fetcher] received an init request");
+            fetcherState.status.channel.postMessage({
+                type: "meIsLeader",
+                version,
+            } as FetcherMessage);
+            fetcherState.status.channel.postMessage({
+                type: "cacheUpdate",
+                updates: [
+                    ...Object.entries(fetcherState.cache.basic.oembed.cache)
+                        .map(([vid, data]) => ({
+                            type: "oembed",
+                            query: vid,
+                            result: data.data?.peek(),
+                            lastUsed: data.lastUsed,
+                        }))
+                        .filter(({ result }) => result != null),
+                    ...Object.entries(fetcherState.cache.basic.resolveChannel.cache)
+                        .map(([vid, data]) => ({
+                            type: "resolve",
+                            query: vid,
+                            result: data.data?.peek(),
+                            lastUsed: data.lastUsed,
+                        }))
+                        .filter(({ result }) => result != null),
+                    ...Object.entries(fetcherState.cache.basic.channelName.cache)
+                        .map(([vid, data]) => ({
+                            type: "browse",
+                            query: vid,
+                            result: data.data?.peek(),
+                            lastUsed: data.lastUsed,
+                        }))
+                        .filter(({ result }) => result != null),
+                ],
+            } as FetcherMessage);
+            break;
+        }
+        case "leaderAlive": {
+            if (fetcherState.status.stage === "passive") {
+                // mark keepalive as received
+                fetcherState.status.keepaliveReceived = true;
+            } else if (fetcherState.status.stage === "leader") {
+                // looks like we've got a leader conflict, run an election
+                console.warn("[maze-utils/fetcher] received a leader keepalive, but we're the leader - triggering election")
+                runFetcherElection();
+            }
+            break;
+        }
+        case "triggerElection": {
+            if (fetcherState.status.stage === "election") return;
+            console.debug("[maze-utils/fetcher] received a trigger election request");
+            runFetcherElection();
+            break;
+        }
+        case "meIsLeader": {
+            if (fetcherState.status.stage === "leader") {
+                // someone's claiming leader when we're already leading - trigger election
+                console.warn("[maze-utils/fetcher] leader conflict - triggering election");
+                runFetcherElection();
+            } else if (fetcherState.status.stage === "election" && fetcherState.status.winning) {
+                // someone's claiming the win when we're winning - restart election
+                console.warn("[maze-utils/fetcher] election fraud - restarting election");
+                runFetcherElection({restart: true});
+            } else if (fetcherState.status.stage === "init" || fetcherState.status.stage === "election") {
+                console.debug("[maze-utils/fetcher] election/init concluded - someone claimed leader")
+                setTimeout(processFetcherQueue, 200);
+                clearFetcherStateIntervals();
+                fetcherState.status = {
+                    stage: "passive",
+                    channel: fetcherState.status.channel,
+                    keepaliveReceived: true,
+                    keepaliveCheckInterval: setInterval(() => {
+                        if (fetcherState.status.stage === "passive" && !fetcherState.status.keepaliveReceived) {
+                            // no keepalive, trigger election
+                            console.warn("[maze-utils/fetcher] no leader keepalive received - triggering election");
+                            runFetcherElection();
+                        }
+                    }, 7000 + 3000 * Math.random()),
+                }
+            }
+            break;
+        }
+        case "submitElection": {
+            if (fetcherState.status.stage === "election") {
+                fetcherState.status.winning &&= versionHigher(version, event.data.version) || (fetcherState.status.random > event.data.random && !versionHigher(event.data.version, version));
+            } else {
+                runFetcherElection({ message: event.data });
+            }
+            break;
+        }
+        case "restartElection": {
+            runFetcherElection({ message: event.data });
+            break;
+        }
+        case "cacheUpdate": {
+            for (const update of event.data.updates) {
+                switch (update.type) {
+                    case "oembed": {
+                        const entry = fetcherState.cache.basic.oembed.setupCache(update.query as VideoID);
+                        entry.data = new PeekPromise(Promise.resolve(update.result as OembedData));
+                        entry.lastUsed = update.lastUsed;
+                        break;
+                    }
+                    case "resolve": {
+                        const entry = fetcherState.cache.basic.resolveChannel.setupCache(update.query);
+                        entry.data = new PeekPromise(Promise.resolve(update.result as ChannelID));
+                        entry.lastUsed = update.lastUsed;
+                        break;
+                    }
+                    case "browse": {
+                        const entry = fetcherState.cache.basic.channelName.setupCache(update.query as ChannelID);
+                        entry.data = new PeekPromise(Promise.resolve(update.result as string));
+                        entry.lastUsed = update.lastUsed;
+                        break;
+                    }
+                }
+
+                const key = `${update.type}+${update.query}`;
+                const pending = fetcherState.pendingRequests.get(key);
+                fetcherState.pendingRequests.delete(key);
+                for (const request of pending ?? []) {
+                    request.resolve(update.result);
+                }
+            }
+            break;
+        }
+        case "cacheBump": {
+            switch (event.data.request.type) {
+                case "oembed":
+                    fetcherState.cache.basic.oembed.cacheUsed(event.data.request.query as VideoID);
+                    break;
+                case "resolve":
+                    fetcherState.cache.basic.resolveChannel.cacheUsed(event.data.request.query);
+                    break;
+                case "browse":
+                    fetcherState.cache.basic.channelName.cacheUsed(event.data.request.query as ChannelID);
+                    break;
+            }
+            break;
+        }
+        case "request": {
+            if (fetcherState.status.stage !== "leader") return;
+            switch (event.data.request.type) {
+                case "oembed": {
+                    const entry = fetcherState.cache.basic.oembed.getFromCache(event.data.request.query as VideoID);
+                    if (entry?.data?.isReady()) {
+                        fetcherState.status.channel.postMessage({
+                            type: "cacheUpdate",
+                            updates: [
+                                {
+                                    type: "oembed",
+                                    query: event.data.request.query,
+                                    result: entry.data.peek(),
+                                    lastUsed: entry.lastUsed
+                                }
+                            ]
+                        } as FetcherMessage);
+                    } else if (entry == null) {
+                        void fetchOembed(event.data.request.query as VideoID);
+                    }
+                    break;
+                }
+                case "resolve": {
+                    const entry = fetcherState.cache.basic.resolveChannel.getFromCache(event.data.request.query);
+                    if (entry?.data?.isReady()) {
+                        fetcherState.status.channel.postMessage({
+                            type: "cacheUpdate",
+                            updates: [
+                                {
+                                    type: "resolve",
+                                    query: event.data.request.query,
+                                    result: entry.data.peek(),
+                                    lastUsed: entry.lastUsed
+                                }
+                            ]
+                        } as FetcherMessage);
+                    } else if (entry == null) {
+                        void resolveHandle(event.data.request.query);
+                    }
+                    break;
+                }
+                case "browse": {
+                    const entry = fetcherState.cache.basic.channelName.getFromCache(event.data.request.query as ChannelID);
+                    if (entry?.data?.isReady()) {
+                        fetcherState.status.channel.postMessage({
+                            type: "cacheUpdate",
+                            updates: [
+                                {
+                                    type: "browse",
+                                    query: event.data.request.query,
+                                    result: entry.data.peek(),
+                                    lastUsed: entry.lastUsed
+                                }
+                            ]
+                        } as FetcherMessage);
+                    } else if (entry == null) {
+                        void fetchChannelName(event.data.request.query as ChannelID);
+                    }
+                    break;
+                }
+            }
+            break;
+        }
+    }
+}
+
+function bumpRemoteCaches(type: Request["type"], query: string) {
+    if (fetcherState.status.stage === "detached") return;
+    fetcherState.status.channel.postMessage({
+        type: "cacheBump",
+        request: { type, query },
+    } as FetcherMessage);
+}
 
 export function setupMetadataOnRecieve() {
     // Try to claim fetcher for channel data
@@ -143,8 +660,15 @@ export function setupMetadataOnRecieve() {
 
     window.addEventListener("message", onMessage);
 
+    window.addEventListener("pagehide", detachFetcher);
+    window.addEventListener("pageshow", attachFetcher);
+    attachFetcher();
+
     addCleanupListener(() => {
         window.removeEventListener("message", onMessage);
+        window.removeEventListener("pagehide", detachFetcher);
+        window.removeEventListener("pageshow", attachFetcher);
+        detachFetcher();
     });
 }
 
@@ -453,13 +977,59 @@ async function doFetchOembed(videoID: VideoID): Promise<OembedData> {
     return data;
 }
 
+function requestOembed(videoID: VideoID): Promise<OembedData | null> {
+    if (fetcherState.status.stage === "leader" || fetcherState.status.stage === "detached") {
+        return doFetchOembed(videoID).catch(err => {
+            console.error(`[maze-utils] OEmbed data request for video ${videoID} failed:`, err)
+            return null;
+        }).then(res => {
+            if (fetcherState.status.stage !== "detached") {
+                fetcherState.status.channel.postMessage({
+                    type: "cacheUpdate",
+                    updates: [{
+                        type: "oembed",
+                        query: videoID,
+                        lastUsed: Date.now(),
+                        result: res,
+                    }]
+                } as FetcherMessage)
+            }
+            return res;
+        });
+    }
+    return new Promise((res, rej) => {
+        const req: QueuedRequest = {
+            type: "oembed",
+            query: videoID,
+            resolve: res as QueuedRequest["resolve"],
+            reject: rej,
+        }
+        if (fetcherState.status.stage === "passive") {
+            const key = `oembed+${videoID}`;
+            const queue = fetcherState.pendingRequests.get(key);
+            if (queue != null) {
+                queue.push(req);
+            } else {
+                fetcherState.pendingRequests.set(key, [req]);
+            }
+            fetcherState.status.channel.postMessage({
+                type: "request",
+                request: {
+                    type: req.type,
+                    query: req.query,
+                }
+            } as FetcherMessage)
+        } else {
+            fetcherState.queuedRequests.push(req);
+        }
+    })
+}
+
 export function fetchOembed(videoID: VideoID): PeekPromise<OembedData | null> {
-    const entry = oembedCache.setupCache(videoID);
-    entry.data ??= new PeekPromise(doFetchOembed(videoID).catch(err => {
-        console.error(`[maze-utils] OEmbed data request for video ${videoID} failed:`, err)
-        return null;
-    }))
-    oembedCache.cacheUsed(videoID);
+    const entry = fetcherState.cache.basic.oembed.setupCache(videoID);
+    entry.data ??= new PeekPromise(requestOembed(videoID))
+    fetcherState.cache.basic.oembed.cacheUsed(videoID);
+    bumpRemoteCaches("oembed", videoID);
     return entry.data;
 }
 
@@ -500,24 +1070,70 @@ async function doResolveHandle(channelHandle: string): Promise<ChannelID> {
     return ucid;
 }
 
+function requestResolveHandle(channelHandle: string): Promise<ChannelID | null> {
+    if (fetcherState.status.stage === "leader" || fetcherState.status.stage === "detached") {
+        return doResolveHandle(channelHandle).catch(err => {
+            console.error(`[maze-utils] Innertube resolve URL request for channel handle ${channelHandle} failed:`, err)
+            return null;
+        }).then(res => {
+            if (fetcherState.status.stage !== "detached") {
+                fetcherState.status.channel.postMessage({
+                    type: "cacheUpdate",
+                    updates: [{
+                        type: "resolve",
+                        query: channelHandle,
+                        lastUsed: Date.now(),
+                        result: res,
+                    }]
+                } as FetcherMessage)
+            }
+            return res;
+        });
+    }
+    return new Promise((res, rej) => {
+        const req: QueuedRequest = {
+            type: "resolve",
+            query: channelHandle,
+            resolve: res as QueuedRequest["resolve"],
+            reject: rej,
+        }
+        if (fetcherState.status.stage === "passive") {
+            const key = `resolve+${channelHandle}`;
+            const queue = fetcherState.pendingRequests.get(key);
+            if (queue != null) {
+                queue.push(req);
+            } else {
+                fetcherState.pendingRequests.set(key, [req]);
+            }
+            fetcherState.status.channel.postMessage({
+                type: "request",
+                request: {
+                    type: req.type,
+                    query: req.query,
+                }
+            } as FetcherMessage)
+        } else {
+            fetcherState.queuedRequests.push(req);
+        }
+    })
+}
+
 export function resolveHandle(channelHandle: string): PeekPromise<ChannelID | null> {
-    const entry = channelResolveCache.setupCache(channelHandle);
-    entry.data ??= new PeekPromise(doResolveHandle(channelHandle).catch(err => {
-        console.error(`[maze-utils] Innertube resolve URL request for channel handle ${channelHandle} failed:`, err)
-        return null;
-    }))
-    channelResolveCache.cacheUsed(channelHandle);
+    const entry = fetcherState.cache.basic.resolveChannel.setupCache(channelHandle);
+    entry.data ??= new PeekPromise(requestResolveHandle(channelHandle));
+    fetcherState.cache.basic.resolveChannel.cacheUsed(channelHandle);
+    bumpRemoteCaches("resolve", channelHandle);
     return entry.data;
 }
 
 export function getUcidFromVideo(videoID: VideoID): PeekPromise<ChannelID | null> {
-    const entry = ucidFromVideoCache.setupCache(videoID);
+    const entry = fetcherState.cache.chained.ucidFromVideo.setupCache(videoID);
     entry.data ??= new PeekPromise((async () => {
         const oembedData = await fetchOembed(videoID);
         if (oembedData?.parsed.channelHandle == null) return null;
         return await resolveHandle(oembedData.parsed.channelHandle);
     })())
-    ucidFromVideoCache.cacheUsed(videoID);
+    fetcherState.cache.chained.ucidFromVideo.cacheUsed(videoID);
     return entry.data;
 }
 
@@ -549,24 +1165,70 @@ async function doFetchChannelName(ucid: ChannelID): Promise<string> {
     return resolved.microformat.microformatDataRenderer.title;
 }
 
+function requestFetchChannelName(ucid: ChannelID): Promise<string | null> {
+    if (fetcherState.status.stage === "leader" || fetcherState.status.stage === "detached") {
+        return doFetchChannelName(ucid).catch(err => {
+            console.error(`[maze-utils] Innertube channel browse request for UCID ${ucid} failed:`, err)
+            return null;
+        }).then(res => {
+            if (fetcherState.status.stage !== "detached") {
+                fetcherState.status.channel.postMessage({
+                    type: "cacheUpdate",
+                    updates: [{
+                        type: "browse",
+                        query: ucid,
+                        lastUsed: Date.now(),
+                        result: res,
+                    }]
+                } as FetcherMessage)
+            }
+            return res;
+        });
+    }
+    return new Promise((res, rej) => {
+        const req: QueuedRequest = {
+            type: "browse",
+            query: ucid,
+            resolve: res as QueuedRequest["resolve"],
+            reject: rej,
+        }
+        if (fetcherState.status.stage === "passive") {
+            const key = `browse+${ucid}`;
+            const queue = fetcherState.pendingRequests.get(key);
+            if (queue != null) {
+                queue.push(req);
+            } else {
+                fetcherState.pendingRequests.set(key, [req]);
+            }
+            fetcherState.status.channel.postMessage({
+                type: "request",
+                request: {
+                    type: req.type,
+                    query: req.query,
+                }
+            } as FetcherMessage)
+        } else {
+            fetcherState.queuedRequests.push(req);
+        }
+    })
+}
+
 export function fetchChannelName(ucid: ChannelID): PeekPromise<string | null> {
-    const entry = channelNameFromUcidCache.setupCache(ucid);
-    entry.data ??= new PeekPromise(doFetchChannelName(ucid).catch(err => {
-        console.error(`[maze-utils] Innertube channel browse request for UCID ${ucid} failed:`, err)
-        return null;
-    }))
-    channelNameFromUcidCache.cacheUsed(ucid);
+    const entry = fetcherState.cache.basic.channelName.setupCache(ucid);
+    entry.data ??= new PeekPromise(requestFetchChannelName(ucid))
+    fetcherState.cache.basic.channelName.cacheUsed(ucid);
+    bumpRemoteCaches("browse", ucid);
     return entry.data;
 }
 
 export function getChannelNameFromVideo(videoID: VideoID): PeekPromise<string | null> {
-    const entry = channelNameFromVideoCache.setupCache(videoID);
+    const entry = fetcherState.cache.chained.nameFromVideo.setupCache(videoID);
     entry.data ??= new PeekPromise((async () => {
         const ucid = await getUcidFromVideo(videoID);
         if (ucid === null) return null;
         return await fetchChannelName(ucid);
     })())
-    channelNameFromVideoCache.cacheUsed(videoID);
+    fetcherState.cache.chained.nameFromVideo.cacheUsed(videoID);
     return entry.data;
 }
 

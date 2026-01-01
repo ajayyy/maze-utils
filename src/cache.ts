@@ -3,7 +3,7 @@ interface CacheRecord {
 }
 
 export class DataCache<T extends string, V> {
-    private cache: Record<string, V & CacheRecord>;
+    public cache: Record<string, V & CacheRecord>;
     private init: () => V;
     private onDelete?: (e: V) => void;
     private cacheLimit: number;
