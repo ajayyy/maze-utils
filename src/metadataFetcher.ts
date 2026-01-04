@@ -2,7 +2,7 @@ import { DataCache } from "./cache";
 import { addCleanupListener } from "./cleanup";
 import { isSafari } from "./config";
 import { onMobile } from "./pageInfo";
-import { ChannelID, VideoID } from "./video";
+import type { ChannelID, VideoID } from "./video";
 
 export interface PlaybackUrl {
     url: string;
