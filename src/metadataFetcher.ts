@@ -345,8 +345,15 @@ function runFetcherElection(params?: ElectionParams) {
 
 function processFetcherQueue() {
     if (fetcherState.status.stage === "election" || fetcherState.status.stage === "init") return;
+    // swap out the queue
     const queue = fetcherState.queuedRequests;
     fetcherState.queuedRequests = [];
+    // requeue pending requests, to prevent deadlocks due to request drops
+    const pendingQueue = fetcherState.pendingRequests;
+    fetcherState.pendingRequests = new Map();
+    for (const array of pendingQueue.values()) {
+        queue.push(...array);
+    }
     if (fetcherState.status.stage === "passive") {
         for (const req of queue) {
             const key = `${req.type}+${req.query}`;
