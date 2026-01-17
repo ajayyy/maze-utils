@@ -3,7 +3,7 @@ interface CacheRecord {
 }
 
 export class DataCache<T extends string, V> {
-    private cache: Record<string, V & CacheRecord>;
+    public cache: Record<string, V & CacheRecord>;
     private init: () => V;
     private onDelete?: (e: V) => void;
     private cacheLimit: number;
@@ -40,5 +40,66 @@ export class DataCache<T extends string, V> {
         if (this.cache[key]) this.cache[key].lastUsed = Date.now();
 
         return !!this.cache[key];
+    }
+}
+
+/**
+ * acts like a promise, but the result can be checked without using async, if it's ready
+ */
+export class PeekPromise<T> implements Promise<T> {
+    private ready: boolean;
+    private value: T | null;
+    private inner: Promise<T>;
+
+    constructor(inner: Promise<T>) {
+        this.inner = inner.then((res) => {
+            this.value = res;
+            this.ready = true;
+            return res;
+        });
+        this.value = null;
+        this.ready = false;
+    }
+
+    /**
+     * Return the resolve value of the promise, if it has been resolved
+     * Returns null otherwise
+     */
+    peek(): T | null {
+        return this.value;
+    }
+
+    /**
+     * Check whether the promise has resolved.
+     * A rejected promise is not considered resolved.
+     */
+    isReady(): boolean {
+        return this.ready;
+    }
+
+    // pass through methods to inner promise
+    then<TResult1 = T, TResult2 = never>(
+        onfulfilled?:
+            | ((value: T) => TResult1 | PromiseLike<TResult1>)
+            | null
+            | undefined,
+        onrejected?:
+            | ((reason: unknown) => TResult2 | PromiseLike<TResult2>)
+            | null
+            | undefined,
+    ): Promise<TResult1 | TResult2> {
+        return this.inner.then(onfulfilled, onrejected);
+    }
+
+    catch<TResult = never>(onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null | undefined): Promise<T | TResult> {
+        return this.inner.catch(onrejected);
+    }
+
+    finally(onfinally?: (() => void) | null | undefined): Promise<T> {
+        return this.inner.finally(onfinally);
+    }
+
+    get [Symbol.toStringTag]() {
+        return this.inner[Symbol.toStringTag];
     }
 }
