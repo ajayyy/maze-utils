@@ -1015,7 +1015,8 @@ export const fetchOembed = wrapMetadataFetcherFunction({
 })
 
 export function isUCID(ucid: string): ucid is ChannelID {
-    return /^UC[0-9A-Za-z-]{22}$/.test(ucid);
+    // https://github.com/yt-dlp/yt-dlp/blob/a065086640e888e8d58c615d52ed2f4f4e4c9d18/yt_dlp/extractor/youtube.py#L518-L519
+    return /^UC[0-9A-Za-z_-]{22}$/.test(ucid);
 }
 
 async function doResolveHandle(channelHandle: string): Promise<ChannelID> {
@@ -1027,7 +1028,7 @@ async function doResolveHandle(channelHandle: string): Promise<ChannelID> {
                 clientVersion: "2.20230327.07.00"
             }
         },
-        url: `https://www.youtube.com/${encodeURIComponent(channelHandle)}`,
+        url: `https://www.youtube.com/${channelHandle}`,
     };
 
     const resp = await fetch(url, {
@@ -1042,10 +1043,9 @@ async function doResolveHandle(channelHandle: string): Promise<ChannelID> {
         throw new Error(`Innertube resolve URL request failed: Got response code ${resp.status} ${resp.statusText}${isBodyGarbage(body) ? "" : ` with body ${body}`}`);
     }
     const resolved = await resp.json();
-    const ucid = resolved.endpoint.browseEndpoint.browseId as string;
+    const ucid = resolved.endpoint?.browseEndpoint?.browseId as string | undefined;
     // sanity check
-    // https://github.com/yt-dlp/yt-dlp/blob/a065086640e888e8d58c615d52ed2f4f4e4c9d18/yt_dlp/extractor/youtube.py#L518-L519
-    if (!isUCID(ucid)) {
+    if (ucid == null || !isUCID(ucid)) {
         throw new Error(`Innertube response contained a seemingly invalid UCID: ${ucid}`);
     }
     return ucid;
