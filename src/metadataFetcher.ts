@@ -158,8 +158,8 @@ interface FetcherState {
         // single-fetch, shared between maze-utils instances
         basic: {
             oembed: FetcherCache<VideoID, OembedData>;
-            resolveChannel: FetcherCache<string, ChannelID>;
-            channelName: FetcherCache<ChannelID, string>;
+            resolve: FetcherCache<string, ChannelID>;
+            browse: FetcherCache<ChannelID, string>;
         };
         // chained fetched cached above, not shared
         chained: {
@@ -193,8 +193,8 @@ const fetcherState: FetcherState = {
     cache: {
         basic: {
             oembed: new DataCache(() => ({ data: null })),
-            resolveChannel: new DataCache(() => ({ data: null })),
-            channelName: new DataCache(() => ({ data: null })),
+            resolve: new DataCache(() => ({ data: null })),
+            browse: new DataCache(() => ({ data: null })),
         },
         chained: {
             ucidFromVideo: new DataCache(() => ({ data: null })),
@@ -415,7 +415,7 @@ function onFetcherMessage(event: MessageEvent<FetcherMessage>) {
                             lastUsed: data.lastUsed,
                         }))
                         .filter(({ result }) => result != null),
-                    ...Object.entries(fetcherState.cache.basic.resolveChannel.cache)
+                    ...Object.entries(fetcherState.cache.basic.resolve.cache)
                         .map(([vid, data]) => ({
                             type: "resolve",
                             query: vid,
@@ -423,7 +423,7 @@ function onFetcherMessage(event: MessageEvent<FetcherMessage>) {
                             lastUsed: data.lastUsed,
                         }))
                         .filter(({ result }) => result != null),
-                    ...Object.entries(fetcherState.cache.basic.channelName.cache)
+                    ...Object.entries(fetcherState.cache.basic.browse.cache)
                         .map(([vid, data]) => ({
                             type: "browse",
                             query: vid,
@@ -502,13 +502,13 @@ function onFetcherMessage(event: MessageEvent<FetcherMessage>) {
                         break;
                     }
                     case "resolve": {
-                        const entry = fetcherState.cache.basic.resolveChannel.setupCache(update.query);
+                        const entry = fetcherState.cache.basic.resolve.setupCache(update.query);
                         entry.data = new PeekPromise(Promise.resolve(update.result as ChannelID));
                         entry.lastUsed = update.lastUsed;
                         break;
                     }
                     case "browse": {
-                        const entry = fetcherState.cache.basic.channelName.setupCache(update.query as ChannelID);
+                        const entry = fetcherState.cache.basic.browse.setupCache(update.query as ChannelID);
                         entry.data = new PeekPromise(Promise.resolve(update.result as string));
                         entry.lastUsed = update.lastUsed;
                         break;
@@ -530,73 +530,42 @@ function onFetcherMessage(event: MessageEvent<FetcherMessage>) {
                     fetcherState.cache.basic.oembed.cacheUsed(event.data.request.query as VideoID);
                     break;
                 case "resolve":
-                    fetcherState.cache.basic.resolveChannel.cacheUsed(event.data.request.query);
+                    fetcherState.cache.basic.resolve.cacheUsed(event.data.request.query);
                     break;
                 case "browse":
-                    fetcherState.cache.basic.channelName.cacheUsed(event.data.request.query as ChannelID);
+                    fetcherState.cache.basic.browse.cacheUsed(event.data.request.query as ChannelID);
                     break;
             }
             break;
         }
         case "request": {
             if (fetcherState.status.stage !== "leader") return;
-            switch (event.data.request.type) {
-                case "oembed": {
-                    const entry = fetcherState.cache.basic.oembed.getFromCache(event.data.request.query as VideoID);
-                    if (entry?.data?.isReady()) {
-                        fetcherState.status.channel.postMessage({
-                            type: "cacheUpdate",
-                            updates: [
-                                {
-                                    type: "oembed",
-                                    query: event.data.request.query,
-                                    result: entry.data.peek(),
-                                    lastUsed: entry.lastUsed
-                                }
-                            ]
-                        } as FetcherMessage);
-                    } else if (entry == null) {
+            const cache = fetcherState.cache.basic[event.data.request.type] as FetcherCache<string, string | OembedData> | undefined;
+            if (cache == null) return;
+            const entry = cache.getFromCache(event.data.request.query);
+            if (entry?.data?.isReady()) {
+                fetcherState.status.channel.postMessage({
+                    type: "cacheUpdate",
+                    updates: [
+                        {
+                            type: event.data.request.type,
+                            query: event.data.request.query,
+                            result: entry.data.peek(),
+                            lastUsed: entry.lastUsed
+                        }
+                    ]
+                } as FetcherMessage);
+            } else if (entry == null) {
+                switch (event.data.request.type) {
+                    case "oembed":
                         void fetchOembed(event.data.request.query as VideoID);
-                    }
-                    break;
-                }
-                case "resolve": {
-                    const entry = fetcherState.cache.basic.resolveChannel.getFromCache(event.data.request.query);
-                    if (entry?.data?.isReady()) {
-                        fetcherState.status.channel.postMessage({
-                            type: "cacheUpdate",
-                            updates: [
-                                {
-                                    type: "resolve",
-                                    query: event.data.request.query,
-                                    result: entry.data.peek(),
-                                    lastUsed: entry.lastUsed
-                                }
-                            ]
-                        } as FetcherMessage);
-                    } else if (entry == null) {
+                        break;
+                    case "resolve":
                         void resolveHandle(event.data.request.query);
-                    }
-                    break;
-                }
-                case "browse": {
-                    const entry = fetcherState.cache.basic.channelName.getFromCache(event.data.request.query as ChannelID);
-                    if (entry?.data?.isReady()) {
-                        fetcherState.status.channel.postMessage({
-                            type: "cacheUpdate",
-                            updates: [
-                                {
-                                    type: "browse",
-                                    query: event.data.request.query,
-                                    result: entry.data.peek(),
-                                    lastUsed: entry.lastUsed
-                                }
-                            ]
-                        } as FetcherMessage);
-                    } else if (entry == null) {
+                        break;
+                    case "browse":
                         void fetchChannelName(event.data.request.query as ChannelID);
-                    }
-                    break;
+                        break;
                 }
             }
             break;
@@ -947,6 +916,69 @@ export async function fetchVideoDataDesktopClient(videoID: VideoID): Promise<Inn
     };
 }
 
+interface WrapFunctionParam<IN, OUT> {
+    fetch: (query: IN) => Promise<OUT>;
+    queryType: Request["type"];
+}
+
+function wrapMetadataFetcherFunction<IN extends string, OUT extends Exclude<Response["result"], null>>(params: WrapFunctionParam<IN, OUT>): (query: IN) => PeekPromise<OUT | null> {
+    function doQuery(query: IN): Promise<OUT | null> {
+        if (fetcherState.status.stage === "leader" || fetcherState.status.stage === "detached") {
+            return params.fetch(query).catch(err => {
+                console.error(`[maze-utils] Metadata query type ${params.queryType} for ${query} failed:`, err)
+                return null;
+            }).then(res => {
+                if (fetcherState.status.stage !== "detached") {
+                    fetcherState.status.channel.postMessage({
+                        type: "cacheUpdate",
+                        updates: [{
+                            type: params.queryType,
+                            query: query,
+                            lastUsed: Date.now(),
+                            result: res,
+                        }]
+                    } as FetcherMessage)
+                }
+                return res;
+            });
+        }
+        return new Promise((res, rej) => {
+            const req: QueuedRequest = {
+                type: params.queryType,
+                query,
+                resolve: res as QueuedRequest["resolve"],
+                reject: rej,
+            }
+            if (fetcherState.status.stage === "passive") {
+                const key = `${params.queryType}+${query}`;
+                const queue = fetcherState.pendingRequests.get(key);
+                if (queue != null) {
+                    queue.push(req);
+                } else {
+                    fetcherState.pendingRequests.set(key, [req]);
+                }
+                fetcherState.status.channel.postMessage({
+                    type: "request",
+                    request: {
+                        type: req.type,
+                        query: req.query,
+                    }
+                } as FetcherMessage)
+            } else {
+                fetcherState.queuedRequests.push(req);
+            }
+        })
+    }
+    return function(query: IN): PeekPromise<OUT | null> {
+        const cache = fetcherState.cache.basic[params.queryType] as FetcherCache<IN, OUT>;
+        const entry = cache.setupCache(query);
+        entry.data ??= new PeekPromise(doQuery(query))
+        cache.cacheUsed(query);
+        bumpRemoteCaches(params.queryType, query);
+        return entry.data;
+    }
+}
+
 async function doFetchOembed(videoID: VideoID): Promise<OembedData> {
     const url = new URL("https://www.youtube.com/oembed");
     url.searchParams.set("url", `https://youtu.be/${videoID}`);
@@ -977,61 +1009,10 @@ async function doFetchOembed(videoID: VideoID): Promise<OembedData> {
     return data;
 }
 
-function requestOembed(videoID: VideoID): Promise<OembedData | null> {
-    if (fetcherState.status.stage === "leader" || fetcherState.status.stage === "detached") {
-        return doFetchOembed(videoID).catch(err => {
-            console.error(`[maze-utils] OEmbed data request for video ${videoID} failed:`, err)
-            return null;
-        }).then(res => {
-            if (fetcherState.status.stage !== "detached") {
-                fetcherState.status.channel.postMessage({
-                    type: "cacheUpdate",
-                    updates: [{
-                        type: "oembed",
-                        query: videoID,
-                        lastUsed: Date.now(),
-                        result: res,
-                    }]
-                } as FetcherMessage)
-            }
-            return res;
-        });
-    }
-    return new Promise((res, rej) => {
-        const req: QueuedRequest = {
-            type: "oembed",
-            query: videoID,
-            resolve: res as QueuedRequest["resolve"],
-            reject: rej,
-        }
-        if (fetcherState.status.stage === "passive") {
-            const key = `oembed+${videoID}`;
-            const queue = fetcherState.pendingRequests.get(key);
-            if (queue != null) {
-                queue.push(req);
-            } else {
-                fetcherState.pendingRequests.set(key, [req]);
-            }
-            fetcherState.status.channel.postMessage({
-                type: "request",
-                request: {
-                    type: req.type,
-                    query: req.query,
-                }
-            } as FetcherMessage)
-        } else {
-            fetcherState.queuedRequests.push(req);
-        }
-    })
-}
-
-export function fetchOembed(videoID: VideoID): PeekPromise<OembedData | null> {
-    const entry = fetcherState.cache.basic.oembed.setupCache(videoID);
-    entry.data ??= new PeekPromise(requestOembed(videoID))
-    fetcherState.cache.basic.oembed.cacheUsed(videoID);
-    bumpRemoteCaches("oembed", videoID);
-    return entry.data;
-}
+export const fetchOembed = wrapMetadataFetcherFunction({
+    fetch: doFetchOembed,
+    queryType: "oembed",
+})
 
 export function isUCID(ucid: string): ucid is ChannelID {
     return /^UC[0-9A-Za-z-]{22}$/.test(ucid);
@@ -1070,61 +1051,10 @@ async function doResolveHandle(channelHandle: string): Promise<ChannelID> {
     return ucid;
 }
 
-function requestResolveHandle(channelHandle: string): Promise<ChannelID | null> {
-    if (fetcherState.status.stage === "leader" || fetcherState.status.stage === "detached") {
-        return doResolveHandle(channelHandle).catch(err => {
-            console.error(`[maze-utils] Innertube resolve URL request for channel handle ${channelHandle} failed:`, err)
-            return null;
-        }).then(res => {
-            if (fetcherState.status.stage !== "detached") {
-                fetcherState.status.channel.postMessage({
-                    type: "cacheUpdate",
-                    updates: [{
-                        type: "resolve",
-                        query: channelHandle,
-                        lastUsed: Date.now(),
-                        result: res,
-                    }]
-                } as FetcherMessage)
-            }
-            return res;
-        });
-    }
-    return new Promise((res, rej) => {
-        const req: QueuedRequest = {
-            type: "resolve",
-            query: channelHandle,
-            resolve: res as QueuedRequest["resolve"],
-            reject: rej,
-        }
-        if (fetcherState.status.stage === "passive") {
-            const key = `resolve+${channelHandle}`;
-            const queue = fetcherState.pendingRequests.get(key);
-            if (queue != null) {
-                queue.push(req);
-            } else {
-                fetcherState.pendingRequests.set(key, [req]);
-            }
-            fetcherState.status.channel.postMessage({
-                type: "request",
-                request: {
-                    type: req.type,
-                    query: req.query,
-                }
-            } as FetcherMessage)
-        } else {
-            fetcherState.queuedRequests.push(req);
-        }
-    })
-}
-
-export function resolveHandle(channelHandle: string): PeekPromise<ChannelID | null> {
-    const entry = fetcherState.cache.basic.resolveChannel.setupCache(channelHandle);
-    entry.data ??= new PeekPromise(requestResolveHandle(channelHandle));
-    fetcherState.cache.basic.resolveChannel.cacheUsed(channelHandle);
-    bumpRemoteCaches("resolve", channelHandle);
-    return entry.data;
-}
+export const resolveHandle = wrapMetadataFetcherFunction({
+    fetch: doResolveHandle,
+    queryType: "resolve",
+})
 
 export function getUcidFromVideo(videoID: VideoID): PeekPromise<ChannelID | null> {
     const entry = fetcherState.cache.chained.ucidFromVideo.setupCache(videoID);
@@ -1165,61 +1095,10 @@ async function doFetchChannelName(ucid: ChannelID): Promise<string> {
     return resolved.microformat.microformatDataRenderer.title;
 }
 
-function requestFetchChannelName(ucid: ChannelID): Promise<string | null> {
-    if (fetcherState.status.stage === "leader" || fetcherState.status.stage === "detached") {
-        return doFetchChannelName(ucid).catch(err => {
-            console.error(`[maze-utils] Innertube channel browse request for UCID ${ucid} failed:`, err)
-            return null;
-        }).then(res => {
-            if (fetcherState.status.stage !== "detached") {
-                fetcherState.status.channel.postMessage({
-                    type: "cacheUpdate",
-                    updates: [{
-                        type: "browse",
-                        query: ucid,
-                        lastUsed: Date.now(),
-                        result: res,
-                    }]
-                } as FetcherMessage)
-            }
-            return res;
-        });
-    }
-    return new Promise((res, rej) => {
-        const req: QueuedRequest = {
-            type: "browse",
-            query: ucid,
-            resolve: res as QueuedRequest["resolve"],
-            reject: rej,
-        }
-        if (fetcherState.status.stage === "passive") {
-            const key = `browse+${ucid}`;
-            const queue = fetcherState.pendingRequests.get(key);
-            if (queue != null) {
-                queue.push(req);
-            } else {
-                fetcherState.pendingRequests.set(key, [req]);
-            }
-            fetcherState.status.channel.postMessage({
-                type: "request",
-                request: {
-                    type: req.type,
-                    query: req.query,
-                }
-            } as FetcherMessage)
-        } else {
-            fetcherState.queuedRequests.push(req);
-        }
-    })
-}
-
-export function fetchChannelName(ucid: ChannelID): PeekPromise<string | null> {
-    const entry = fetcherState.cache.basic.channelName.setupCache(ucid);
-    entry.data ??= new PeekPromise(requestFetchChannelName(ucid))
-    fetcherState.cache.basic.channelName.cacheUsed(ucid);
-    bumpRemoteCaches("browse", ucid);
-    return entry.data;
-}
+export const fetchChannelName = wrapMetadataFetcherFunction({
+    fetch: doFetchChannelName,
+    queryType: "browse",
+})
 
 export function getChannelNameFromVideo(videoID: VideoID): PeekPromise<string | null> {
     const entry = fetcherState.cache.chained.nameFromVideo.setupCache(videoID);
