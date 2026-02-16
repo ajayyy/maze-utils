@@ -928,11 +928,17 @@ interface WrapFunctionParam<IN, OUT> {
     queryType: Request["type"];
 }
 
+let metadataErrors = 0;
 function wrapMetadataFetcherFunction<IN extends string, OUT extends Exclude<Response["result"], null>>(params: WrapFunctionParam<IN, OUT>): (query: IN) => PeekPromise<OUT | null> {
     function doQuery(query: IN): Promise<OUT | null> {
         if (fetcherState.status.stage === "leader" || fetcherState.status.stage === "detached") {
             return params.fetch(query).catch(err => {
-                console.error(`[maze-utils] Metadata query type ${params.queryType} for ${query} failed:`, err)
+                // Silence some metadata fetch errors to prevent unnecessary error logs for YT dummy fake videoIDs (anti adblock)
+                if (metadataErrors > 5) {
+                    console.error(`[maze-utils] Metadata query type ${params.queryType} for ${query} failed:`, err)
+                }
+
+                metadataErrors++
                 return null;
             }).then(res => {
                 if (fetcherState.status.stage !== "detached") {
