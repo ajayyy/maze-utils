@@ -6,7 +6,7 @@ import { isOnInvidious } from "./video";
 
 export type ThumbnailListener = (newThumbnails: HTMLElement[]) => void;
 
-const handledThumbnails = new Map<HTMLElement, MutationObserver>();
+const handledThumbnails = new Map<HTMLElement, MutationObserver[]>();
 let lastGarbageCollection = 0;
 let thumbnailListener: ThumbnailListener | null = null;
 let selector = "";
@@ -63,7 +63,7 @@ export function setThumbnailListener(listener: ThumbnailListener, onInitialLoad:
 
     addCleanupListener(() => {
         for (const handledThumbnail of handledThumbnails) {
-            handledThumbnail[1].disconnect();
+            handledThumbnail[1].forEach((m) => m.disconnect());
         }
 
         handledThumbnails.clear();
@@ -104,7 +104,6 @@ export function newThumbnails() {
                     }
                 }
             });
-            handledThumbnails.set(thumbnail, observer);
 
             const link = getThumbnailLink(thumbnail);
             if (link) observer.observe(link, { attributes: true });
@@ -123,6 +122,8 @@ export function newThumbnails() {
 
             const content = thumbnail.querySelector("#content");
             if (content) observer2.observe(content, { childList: true });
+            
+            handledThumbnails.set(thumbnail, [observer, observer2]);
         }
     }
 
@@ -133,14 +134,20 @@ export function newThumbnails() {
         // But are handled by happening to be when new ones are added too
         for (const thumbnail of notNewThumbnails) {
             if (document.body && !document.body.contains(thumbnail)) {
-                const observer = handledThumbnails.get(thumbnail);
-                observer?.disconnect();
+                const observers = handledThumbnails.get(thumbnail);
+                observers?.forEach((m) => m.disconnect());
                 handledThumbnails.delete(thumbnail);
             }
         }
 
         lastGarbageCollection = performance.now();
     }
+}
+
+export function removeHandledThumbnail(thumbnail: HTMLElement) {
+    const observers = handledThumbnails.get(thumbnail);
+    observers?.forEach((m) => m.disconnect());
+    handledThumbnails.delete(thumbnail);
 }
 
 export function updateAll(): void {
