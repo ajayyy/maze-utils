@@ -3,7 +3,7 @@ import { isOnV3Extension, onMobile } from "../../maze-utils/src/pageInfo";
 export const brandingBoxSelector = !onMobile()
     ? ("ytd-rich-grid-media, ytd-video-renderer, ytd-movie-renderer, ytd-compact-video-renderer, ytd-compact-radio-renderer, ytd-compact-movie-renderer, ytd-playlist-video-renderer, ytd-playlist-panel-video-renderer, ytd-grid-video-renderer, ytd-grid-movie-renderer, ytd-rich-grid-slim-media, ytd-radio-renderer, ytd-reel-item-renderer, ytd-compact-playlist-renderer, ytd-playlist-renderer, ytd-grid-playlist-renderer, ytd-grid-show-renderer, ytd-structured-description-video-lockup-renderer, ytd-hero-playlist-thumbnail-renderer, yt-lockup-view-model, ytm-shorts-lockup-view-model"
         + ", .lohp-large-shelf-container, .lohp-medium-shelf, .yt-lockup-video, .related-video") // Vorapis v3
-    : "ytm-video-with-context-renderer, ytm-compact-radio-renderer, ytm-reel-item-renderer, ytm-channel-featured-video-renderer, ytm-compact-video-renderer, ytm-playlist-video-renderer, .playlist-immersive-header-content, ytm-compact-playlist-renderer, ytm-video-card-renderer, ytm-vertical-list-renderer, ytm-playlist-panel-video-renderer, ytm-shorts-lockup-view-model";
+    : "ytm-video-with-context-renderer, ytm-compact-radio-renderer, ytm-reel-item-renderer, ytm-channel-featured-video-renderer, ytm-compact-video-renderer, ytm-playlist-video-renderer, ytm-compact-playlist-renderer, ytm-video-card-renderer, ytm-vertical-list-renderer, ytm-playlist-panel-video-renderer, ytm-shorts-lockup-view-model, .autonav-endscreen-countdown-container, yt-page-header-view-model";
 
 export function getThumbnailElements() {
     if (!onMobile()) {
@@ -21,7 +21,9 @@ export function getThumbnailElements() {
             "ytm-thumbnail-cover",
             ".video-thumbnail-container-vertical",
             "ytm-hero-playlist-thumbnail-renderer",
-            "ytm-shorts-lockup-view-model"
+            "ytm-shorts-lockup-view-model",
+            ".autonav-endscreen-countdown-container",
+            "yt-content-preview-image-view-model"
         ];
     }
 }
@@ -45,7 +47,7 @@ export function getThumbnailImageSelectors() {
             return ".ux-thumb-wrap img:not(.cbCustomThumbnailCanvas)";
         }
     } else {
-        return "img.video-thumbnail-img, img.amsterdam-playlist-thumbnail, ytm-shorts-lockup-view-model img";
+        return "img.video-thumbnail-img, img.amsterdam-playlist-thumbnail, ytm-shorts-lockup-view-model img, yt-content-preview-image-view-model img";
     }
 }
 
@@ -58,6 +60,7 @@ export function getThumbnailLink(thumbnail: HTMLElement): HTMLElement | null {
             "ytm-channel-featured-video-renderer a",
             "a.compact-media-item-image",
             "a.reel-item-endpoint",
+            "a.autonav-endscreen-cued-video-container",
             ".amsterdam-playlist-thumbnail-wrapper a",
             "a.YtmCompactMediaItemMetadataContent"
         ].join(", "));
