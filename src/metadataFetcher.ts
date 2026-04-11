@@ -983,7 +983,7 @@ function wrapMetadataFetcherFunction<IN extends string, OUT extends Exclude<Resp
         })
     }
     return function(query: IN): PeekPromise<OUT | null> {
-        const cache = fetcherState.cache.basic[params.queryType] as FetcherCache<IN, OUT>;
+        const cache = fetcherState.cache.basic[params.queryType] as unknown as FetcherCache<IN, OUT>;
         const entry = cache.setupCache(query);
         entry.data ??= new PeekPromise(doQuery(query))
         cache.cacheUsed(query);
