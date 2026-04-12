@@ -368,6 +368,16 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
                 callLater: false
             };
         }
+    } else if (onInvidious && urlObject.searchParams.has("id")) {
+        const id = urlObject.searchParams.get("id");
+        return {
+            videoID: id?.length >= 11 ? id.slice(0, 11) as VideoID : null,
+            onInvidious,
+            onMobileYouTube,
+            onYTTV,
+            onYouTubeMusic,
+            callLater: false
+        };
     }
 
     return {
