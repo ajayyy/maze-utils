@@ -51,8 +51,8 @@ interface VideoModuleParams {
     allowClipPage?: boolean;
 }
 
-const embedTitleSelector = "a.ytp-title-link[data-sessionlink='feature=player-title']:not(.cbCustomTitle)";
-const channelTrailerTitleSelector = "ytd-channel-video-player-renderer a.ytp-title-link[data-sessionlink='feature=player-title']:not(.cbCustomTitle)";
+const embedTitleSelector = "a.ytmVideoInfoVideoTitle:not(.cbCustomTitle)";
+const channelTrailerTitleSelector = "ytd-channel-video-player-renderer a.ytp-title-link:not(.cbCustomTitle)";
 
 let video: HTMLVideoElement | null = null;
 let videoWidth: string | null = null;
