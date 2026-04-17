@@ -1,5 +1,7 @@
 export function onMobile() {
-    return typeof window !== "undefined" && window.location.hostname === "m.youtube.com";
+    return typeof window !== "undefined" &&
+        (window.location.hostname === "m.youtube.com"
+         || window.location.pathname.startsWith("/embed"));
 }
 
 export function onYouTubeCableTV() {

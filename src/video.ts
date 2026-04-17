@@ -51,7 +51,7 @@ interface VideoModuleParams {
     allowClipPage?: boolean;
 }
 
-const embedTitleSelector = "a.ytp-title-link[data-sessionlink='feature=player-title']:not(.cbCustomTitle)";
+const embedTitleSelector = "a.ytp-title-link[data-sessionlink='feature=player-title']:not(.cbCustomTitle), .ytmVideoInfoVideoTitle:not(.cbCustomTitle)";
 const channelTrailerTitleSelector = "ytd-channel-video-player-renderer a.ytp-title-link[data-sessionlink='feature=player-title']:not(.cbCustomTitle)";
 
 let video: HTMLVideoElement | null = null;
@@ -242,7 +242,13 @@ export function getYouTubeVideoID(url?: string): VideoID | null {
     // clips should never skip, going from clip to full video has no indications.
     if (!params.allowClipPage && url.includes("youtube.com/clip/")) return null;
     // skip to document and don't hide if on /embed/
-    if (url.includes("/embed/") && url.includes("youtube.com")) return getYouTubeVideoIDFromDocument(false, PageType.Embed);
+    if (url.includes("/embed/") && url.includes("youtube.com")) {
+        const result = getYouTubeVideoIDFromDocument(false, PageType.Embed);
+
+        // Embed is now mobile site
+        onMobileYouTube = true;
+        return result;
+    }
     // skip to URL if matches youtube watch or invidious or matches youtube pattern
     if ((!url.includes("youtube.com")) || url.match(/\/watch|\/shorts\/|playlist|\/live\//)) return getYouTubeVideoIDFromURL(url);
     // skip to document if matches pattern
