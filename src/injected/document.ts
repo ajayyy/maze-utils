@@ -312,24 +312,13 @@ export function init(): void {
                             thumbnailMutationObserver = null;
                         }
 
-                        if (constructor.toString().startsWith("class")) {
-                            class WrappedThumbnail extends constructor {
-                                constructor() {
-                                    super();
-                                    sendMessage({ type: "newElement", name })
-                                }
-                            }
-                            replacedConstructor = WrappedThumbnail;
-                        } else {
-                            // based on https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/new.target#new.target_using_reflect.construct
-                            // clearly marked as bad practice, but it works lol
-                            replacedConstructor = function () {
-                                constructor.call(this);
+                        class WrappedThumbnail extends constructor {
+                            constructor() {
+                                super();
                                 sendMessage({ type: "newElement", name })
-                            };
-                            Object.setPrototypeOf(replacedConstructor.prototype, constructor.prototype);
-                            Object.setPrototypeOf(replacedConstructor, constructor);
+                            }
                         }
+                        replacedConstructor = WrappedThumbnail;
                     }
     
                     realCustomElementDefine(name, replacedConstructor, options);
