@@ -10,6 +10,10 @@ export function isVisible(element: HTMLElement | null, ignoreWidth = false): boo
         && (element as HTMLVideoElement).duration) {
         return true;
     }
+    // Special case for video in case it is scrolled offscreen
+    if (element.tagName === "VIDEO" && element.offsetHeight) {
+        return true;
+    }
     
     if (element.offsetHeight === 0 || (element.offsetWidth === 0 && !ignoreWidth)) {
         return false;
