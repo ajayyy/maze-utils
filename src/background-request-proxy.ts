@@ -141,7 +141,9 @@ export function sendRequestToCustomServer(type: string, url: string, data = {}, 
             data,
             headers
         }, (response) => {
-            if ("error" in response) {
+            if (response == null) {
+                reject(new Error(`Got ${response} response from background page`));
+            } else if ("error" in response) {
                 reject(response.error);
             } else {
                 resolve(response);
@@ -162,7 +164,9 @@ export function sendBinaryRequestToCustomServer(type: string, url: string, data 
             binary: true,
             returnHeaders: true
         }, (response) => {
-            if ("error" in response) {
+            if (response == null) {
+                reject(new Error(`Got ${response} response from background page`));
+            } else if ("error" in response) {
                 reject(response.error);
             } else {
                 resolve(response);
