@@ -185,10 +185,14 @@ function findAllVideoIds(data: Record<string, unknown>): Set<string> {
     const videoIds: Set<string> = new Set();
     
     for (const key in data) {
+        let entry = data[key];
         if (key === "videoId") {
-            videoIds.add(data[key] as string);
-        } else if (typeof(data[key]) === "object" && !ytInfoKeysToIgnore.includes(key)) {
-            findAllVideoIds(data[key] as Record<string, unknown>).forEach(id => videoIds.add(id));
+            videoIds.add(entry as string);
+        } else if (entry != null
+                   && typeof(entry) === "object"
+                   && !ytInfoKeysToIgnore.includes(key)
+                   && !(entry instanceof Node)) {
+            findAllVideoIds(entry as Record<string, unknown>).forEach(id => videoIds.add(id));
         }
     }
 
