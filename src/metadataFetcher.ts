@@ -1027,6 +1027,10 @@ export const fetchOembed = wrapMetadataFetcherFunction({
     queryType: "oembed",
 })
 
+export async function getChannelHandleFromVideo(videoID: VideoID): Promise<string | null | undefined> {
+    return (await fetchOembed(videoID))?.parsed.channelHandle
+}
+
 export function isUCID(ucid: string): ucid is ChannelID {
     // https://github.com/yt-dlp/yt-dlp/blob/a065086640e888e8d58c615d52ed2f4f4e4c9d18/yt_dlp/extractor/youtube.py#L518-L519
     return /^UC[0-9A-Za-z_-]{22}$/.test(ucid);
