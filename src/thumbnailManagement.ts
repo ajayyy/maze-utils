@@ -122,6 +122,21 @@ export function newThumbnails() {
 
             const content = thumbnail.querySelector("#content");
             if (content) observer2.observe(content, { childList: true });
+
+            // For related pages getting reset on resize and when live chat is closed
+            if (thumbnail.tagName === "YT-LOCKUP-VIEW-MODEL") {
+                const observer3 = new MutationObserver((mutations) => {
+                    for (const mutation of mutations) {
+                        if (mutation.type === "childList" 
+                                && (mutation.addedNodes.length > 0)) {
+                            thumbnailListener?.([thumbnail]);
+                            break;
+                        }
+                    }
+                });
+
+                observer3.observe(thumbnail, { childList: true });
+            }
             
             handledThumbnails.set(thumbnail, [observer, observer2]);
         }
