@@ -671,7 +671,7 @@ function addPageListeners(): void {
 }
 
 export async function extractVideoID(link: HTMLAnchorElement) {
-    const videoIDRegex = link.href?.match?.(/(?:\?|&)v=(\S{11})|\/shorts\/(\S{11})/);
+    const videoIDRegex = link.href?.match?.(/(?:\?|&)v=(\S{11})|\/(?:shorts|live)\/(\S{11})/);
     let videoID = (videoIDRegex?.[1] || videoIDRegex?.[2]) as VideoID;
 
     if (!videoID) {
