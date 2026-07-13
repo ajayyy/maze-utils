@@ -132,10 +132,11 @@ export function setupVideoModule(moduleParams: VideoModuleParams, config: () => 
         });
     }
     // Record availability of Navigation API
-    void waitFor(() => config().local !== null).then(() => {
-        if (config().local!.navigationApiAvailable !== navigationApiAvailable) {
-            config().local!.navigationApiAvailable = navigationApiAvailable;
-            config().forceLocalUpdate("navigationApiAvailable");
+    chrome.storage.local.get("navigationApiAvailable", (v) => {
+        if (v.navigationApiAvailable !== navigationApiAvailable) {
+            void chrome.storage.local.set({
+                navigationApiAvailable
+            });
         }
     });
 

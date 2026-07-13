@@ -5,7 +5,6 @@ export interface SyncStorage {
 }
 
 export interface LocalStorage {
-    navigationApiAvailable: boolean;
 }
 
 interface StorageObjects<T, U> {
@@ -33,11 +32,13 @@ export class ProtoConfig<T extends SyncStorage, U extends LocalStorage> {
     config: T | null = null;
     local: U | null = null;
     inDeArrow = false;
+    ignoreLocal = false;
 
-    constructor (syncDefaults: T, localDefaults: U,
+    constructor (syncDefaults: T, localDefaults: U | null,
             migrateOldSyncFormats: (config: T, local?: U) => void, inDeArrow = false) {
         this.syncDefaults = syncDefaults;
-        this.localDefaults = localDefaults;
+        this.localDefaults = localDefaults ?? {} as U;
+        this.ignoreLocal = localDefaults === null;
         this.inDeArrow = inDeArrow;
 
         void this.setupConfig(migrateOldSyncFormats).then((result) => {
@@ -47,16 +48,18 @@ export class ProtoConfig<T extends SyncStorage, U extends LocalStorage> {
     }
 
     configProxy(): StorageObjects<T, U> {
-        chrome.storage.onChanged.addListener((changes: {[key: string]: chrome.storage.StorageChange}, areaName) => {
-            if (areaName === "sync") {
-                for (const key in changes) {
-                    this.cachedSyncConfig![key] = changes[key].newValue;
-                }
-    
-                for (const callback of this.configSyncListeners) {
-                    callback(changes);
-                }
-            } else if (areaName === "local") {
+        chrome.storage.sync.onChanged.addListener((changes: {[key: string]: chrome.storage.StorageChange}, areaName) => {
+            for (const key in changes) {
+                this.cachedSyncConfig![key] = changes[key].newValue;
+            }
+
+            for (const callback of this.configSyncListeners) {
+                callback(changes);
+            }
+        });
+
+        if (!this.ignoreLocal) {
+            chrome.storage.local.onChanged.addListener((changes: {[key: string]: chrome.storage.StorageChange}, areaName) => {
                 for (const key in changes) {
                     this.cachedLocalStorage![key] = changes[key].newValue;
                 }
@@ -64,8 +67,9 @@ export class ProtoConfig<T extends SyncStorage, U extends LocalStorage> {
                 for (const callback of this.configLocalListeners) {
                     callback(changes);
                 }
-            }
-        });
+            });
+        }
+
 
         let lastSet = 0;
         const nextToUpdate: Set<string> = new Set();
@@ -190,10 +194,14 @@ export class ProtoConfig<T extends SyncStorage, U extends LocalStorage> {
                 resolve();
             });
         }), new Promise<void>((resolve) => {
-            chrome.storage.local.get(null, (items) => {
-                this.cachedLocalStorage = <U> <unknown> (items ?? {});
+            if (!this.ignoreLocal) {
+                chrome.storage.local.get(null, (items) => {
+                    this.cachedLocalStorage = <U> <unknown> (items ?? {});
+                    resolve();
+                });
+            } else {
                 resolve();
-            });
+            }
         })]);
     }
     
