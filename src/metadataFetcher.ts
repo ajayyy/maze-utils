@@ -227,7 +227,6 @@ function attachFetcher() {
         console.debug("[maze-utils/fetcher] attaching: init message sent")
     } catch {
         console.error(`[SponsorBlock/DeArrow]: BroadcastChannel not supported, will not share metadata requests`);
-        console.log(fetcherState)
     }
 }
 
