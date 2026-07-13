@@ -48,7 +48,7 @@ export class ProtoConfig<T extends SyncStorage, U extends LocalStorage> {
     }
 
     configProxy(): StorageObjects<T, U> {
-        chrome.storage.sync.onChanged.addListener((changes: {[key: string]: chrome.storage.StorageChange}, areaName) => {
+        chrome.storage.sync.onChanged.addListener((changes: {[key: string]: chrome.storage.StorageChange}) => {
             for (const key in changes) {
                 this.cachedSyncConfig![key] = changes[key].newValue;
             }
@@ -59,7 +59,7 @@ export class ProtoConfig<T extends SyncStorage, U extends LocalStorage> {
         });
 
         if (!this.ignoreLocal) {
-            chrome.storage.local.onChanged.addListener((changes: {[key: string]: chrome.storage.StorageChange}, areaName) => {
+            chrome.storage.local.onChanged.addListener((changes: {[key: string]: chrome.storage.StorageChange}) => {
                 for (const key in changes) {
                     this.cachedLocalStorage![key] = changes[key].newValue;
                 }
