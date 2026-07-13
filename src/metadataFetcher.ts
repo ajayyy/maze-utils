@@ -209,21 +209,26 @@ const fetcherState: FetcherState = {
 // attaches the fetcher to the shared broadcast channel, enabling cache sharing
 function attachFetcher() {
     if (fetcherState.status.stage !== "detached") return;
-    const channel = new BroadcastChannel("maze-utils:metadata-fetcher");
-    channel.addEventListener("message", onFetcherMessage)
-    clearFetcherStateIntervals();
-    fetcherState.status = {
-        stage: "init",
-        channel,
-        requestTimeout: setTimeout(() => {
-            if (fetcherState.status.stage === "init") {
-                console.debug("[maze-utils/fetcher] no response after 500ms, triggering election")
-                runFetcherElection()
-            }
-        }, 500),
-    };
-    channel.postMessage({ type: "init" } as FetcherMessage);
-    console.debug("[maze-utils/fetcher] attaching: init message sent")
+    try {
+        const channel = new BroadcastChannel("maze-utils:metadata-fetcher");
+        channel.addEventListener("message", onFetcherMessage)
+        clearFetcherStateIntervals();
+        fetcherState.status = {
+            stage: "init",
+            channel,
+            requestTimeout: setTimeout(() => {
+                if (fetcherState.status.stage === "init") {
+                    console.debug("[maze-utils/fetcher] no response after 500ms, triggering election")
+                    runFetcherElection()
+                }
+            }, 500),
+        };
+        channel.postMessage({ type: "init" } as FetcherMessage);
+        console.debug("[maze-utils/fetcher] attaching: init message sent")
+    } catch {
+        console.error(`[SponsorBlock/DeArrow]: BroadcastChannel not supported, will not share metadata requests`);
+        console.log(fetcherState)
+    }
 }
 
 // detaches the fetcher from the shared broadcast channel
