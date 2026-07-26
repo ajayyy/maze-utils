@@ -8,20 +8,23 @@ export async function waitFor<T>(condition: () => T, timeout = 5000, check = 100
             if (predicate ? predicate(result) : result) {
                 resolve(result);
                 if (interval) clearInterval(interval);
+                return true;
             }
+            return false;
         };
 
-        if (timeout) {
-            setTimeout(() => {
-                clearInterval(interval!);
-                reject(`TIMEOUT waiting for ${condition?.toString()}: ${Error().stack}`);
-            }, timeout);
-
-            interval = setInterval(intervalCheck, check);
-        }
-        
         // Run the check once first, this speeds it up a lot
-        intervalCheck();
+        if (intervalCheck()) return;
+        // Otherwise proceed to set up the timeout & interval
+
+        // create the error outside of the setTimeout loop, to make sure it has the correct stack trace
+        const error = new Error(`TIMEOUT waiting for ${condition?.toString()}`);
+        setTimeout(() => {
+            clearInterval(interval!);
+            reject(error);
+        }, timeout);
+
+        interval = setInterval(intervalCheck, check);
     });
 }
 
