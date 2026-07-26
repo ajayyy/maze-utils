@@ -180,7 +180,8 @@ async function videoIDChange(id: VideoID | null, isInlineParam = false): Promise
     }
 
     //if the id has not changed return unless the video element has changed
-    if (videoID === id && (isVisible(video) || !video)) {
+    const sameVideo = videoID === id;
+    if (sameVideo && (isVisible(video) || !video)) {
         if (isOnChannelPage()) {
             if (videoID) {
                 params.onNavigateToChannel?.();
@@ -194,7 +195,7 @@ async function videoIDChange(id: VideoID | null, isInlineParam = false): Promise
         void refreshVideoAttachments();
     }
 
-    resetValues();
+    resetValues(sameVideo);
     videoID = id;
     isInline = isInlineParam;
 
@@ -212,17 +213,19 @@ async function videoIDChange(id: VideoID | null, isInlineParam = false): Promise
     return true;
 }
 
-function resetValues() {
+function resetValues(sameVideo: boolean) {
     params.resetValues();
 
-    videoID = null;
+    if (!sameVideo) {
+        videoID = null;
+        channelIDInfo = {
+            status: ChannelIDStatus.Fetching,
+            id: null,
+            author: null
+        };
+        isLivePremiere = false;
+    }
     pageType = PageType.Unknown;
-    channelIDInfo = {
-        status: ChannelIDStatus.Fetching,
-        id: null,
-        author: null
-    };
-    isLivePremiere = false;
     isInline = false;
     adDuration = 0;
     currentTimeWrong = false;
@@ -389,64 +392,67 @@ export function parseYouTubeVideoIDFromURL(url: string): ParsedVideoURL {
 
 //checks if this channel is whitelisted, should be done only after the channelID has been loaded
 export async function whitelistCheck(videoID: VideoID) {
-    if (channelIDInfo.status === ChannelIDStatus.Found) return;
-    try {
-        waitingForChannelID = true;
-        
-        const fetchPromises = {
-            id: getUcidFromVideo(videoID),
-            author: getChannelNameFromVideo(videoID),
-        }
-        const channelIDPromises = [
-            waitFor(() => channelIDInfo.status === ChannelIDStatus.Found, 6000, 20),
-            Promise.all(Object.values(fetchPromises)),
-        ];
+    if (channelIDInfo.status !== ChannelIDStatus.Found) {
+        try {
+            waitingForChannelID = true;
 
-        await Promise.race(channelIDPromises);
-
-        // @ts-expect-error race condition or smth idk, theres an await above
-        if (channelIDInfo.status !== ChannelIDStatus.Found) {
-            const fetchedInfo = {
-                id: fetchPromises.id.peek(),
-                author: fetchPromises.author.peek(),
+            const fetchPromises = {
+                id: getUcidFromVideo(videoID),
+                author: getChannelNameFromVideo(videoID),
             }
-            if (fetchedInfo.id !== null && fetchedInfo.author !== null) {
-                channelIDInfo = {
-                    status: ChannelIDStatus.Found,
-                    ...fetchedInfo
+            const channelIDPromises = [
+                waitFor(() => channelIDInfo.status === ChannelIDStatus.Found, 6000, 20),
+                Promise.all(Object.values(fetchPromises)),
+            ];
+    
+            await Promise.race(channelIDPromises);
+    
+            // @ts-expect-error race condition or smth idk, theres an await above
+            if (channelIDInfo.status !== ChannelIDStatus.Found) {
+                const fetchedInfo = {
+                    id: fetchPromises.id.peek(),
+                    author: fetchPromises.author.peek(),
+                }
+                if (fetchedInfo.id !== null && fetchedInfo.author !== null) {
+                    channelIDInfo = {
+                        status: ChannelIDStatus.Found,
+                        ...fetchedInfo
+                    }
                 }
             }
-        }
+    
+            // If found, continue on, it was set by the listener
+        } catch (e) {
+            const videoButtonHref = (document.querySelector("#social-links yt-button-shape a"))?.getAttribute("href")
+            let channelIDFallback: string | null | undefined = null;
+            if (videoButtonHref && videoButtonHref.includes("/channel/")) {
+                channelIDFallback = videoButtonHref.match(/\/channel\/(UC[a-zA-Z0-9_-]{22})/)?.[1] as ChannelID;
+            }
+    
+            // Try fallback
+            channelIDFallback ??= (document.querySelector("a.ytd-video-owner-renderer") // YouTube
+                ?? document.querySelector("a.ytp-title-channel-logo") // YouTube Embed
+                ?? document.querySelector(".channel-profile #channel-name")?.parentElement?.parentElement // Invidious
+                ?? document.querySelector("a.slim-owner-icon-and-title")) // Mobile YouTube
+                    ?.getAttribute("href")?.match(/\/(?:(?:channel|c|user|)\/|@)(UC[a-zA-Z0-9_-]{22}|[a-zA-Z0-9_-]+)/)?.[1];
+            
+            const authorFallback = (document.querySelector("ytd-channel-name a.yt-formatted-string") as HTMLElement)?.innerText
 
-        // If found, continue on, it was set by the listener
-    } catch (e) {
-        const videoButtonHref = (document.querySelector("#social-links yt-button-shape a"))?.getAttribute("href")
-        let channelIDFallback: string | null | undefined = null;
-        if (videoButtonHref && videoButtonHref.includes("/channel/")) {
-            channelIDFallback = videoButtonHref.match(/\/channel\/(UC[a-zA-Z0-9_-]{22})/)?.[1] as ChannelID;
-        }
-
-        // Try fallback
-        channelIDFallback ??= (document.querySelector("a.ytd-video-owner-renderer") // YouTube
-            ?? document.querySelector("a.ytp-title-channel-logo") // YouTube Embed
-            ?? document.querySelector(".channel-profile #channel-name")?.parentElement?.parentElement // Invidious
-            ?? document.querySelector("a.slim-owner-icon-and-title")) // Mobile YouTube
-                ?.getAttribute("href")?.match(/\/(?:(?:channel|c|user|)\/|@)(UC[a-zA-Z0-9_-]{22}|[a-zA-Z0-9_-]+)/)?.[1];
-        
-        const authorFallback = (document.querySelector("ytd-channel-name a.yt-formatted-string") as HTMLElement)?.innerText
-
-        if (channelIDFallback) {
-            channelIDInfo = {
-                status: ChannelIDStatus.Found,
-                id: channelIDFallback as ChannelID,
-                author: authorFallback
-            };
-        } else {
-            channelIDInfo = {
-                status: ChannelIDStatus.Failed,
-                id: null,
-                author: null
-            };
+            if (channelIDInfo.status === ChannelIDStatus.Found) return;
+    
+            if (channelIDFallback) {
+                channelIDInfo = {
+                    status: ChannelIDStatus.Found,
+                    id: channelIDFallback as ChannelID,
+                    author: authorFallback
+                };
+            } else {
+                channelIDInfo = {
+                    status: ChannelIDStatus.Failed,
+                    id: null,
+                    author: null
+                };
+            }
         }
     }
 
@@ -606,9 +612,7 @@ function windowListenerHandler(event: MessageEvent): void {
                 status: ChannelIDStatus.Found
             };
 
-            if (!waitingForChannelID) {
-                void whitelistCheck(data.videoID);
-            }
+            void whitelistCheck(data.videoID);
         }
 
         void videoIDChange(data.videoID);
