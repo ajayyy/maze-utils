@@ -786,7 +786,16 @@ export function verifyCurrentTime(time?: number): void {
 
 export function setCurrentTime(time: number): void {
     if (getVideo()) {
-        getVideo()!.currentTime = time + adDuration;
+        const duration = getVideo()!.duration;
+        const newTime = time + adDuration;
+
+        if (duration && newTime >= duration && !getVideo()!.loop) {
+            getVideo()!.pause();
+            getVideo()!.currentTime = duration;
+            getVideo()!.play().catch;
+        } else {
+            getVideo()!.currentTime = newTime;
+        }
     }
 }
 
