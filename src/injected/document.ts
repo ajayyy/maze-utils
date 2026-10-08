@@ -46,6 +46,11 @@ interface VideoIDsLoadedCreated {
     videoIDs: string[];
 }
 
+interface ChannelIDsLoadedMessage {
+    type: "channelIDsLoaded";
+    channelsPerVideo: Record<string, string | null>;
+}
+
 interface AdDurationMessage {
     type: "adDuration";
     duration: number;
@@ -57,7 +62,7 @@ interface CurrentTimeWrongMessage {
     expectedTime: number;
 }
 
-type WindowMessage = StartMessage | FinishMessage | AdMessage | VideoData | ElementCreated | VideoIDsLoadedCreated | AdDurationMessage | CurrentTimeWrongMessage;
+type WindowMessage = StartMessage | FinishMessage | AdMessage | VideoData | ElementCreated | VideoIDsLoadedCreated | ChannelIDsLoadedMessage | AdDurationMessage | CurrentTimeWrongMessage;
 
 declare const ytInitialData: Record<string, string> | undefined;
 
@@ -78,6 +83,11 @@ const fetchUrlsToRead = [
     "/youtubei/v1/next",
     "/youtubei/v1/player"
 ];
+const fetchUrlsToGetChannelIDs = [
+    ...fetchUrlsToRead,
+    "/youtubei/v1/get_watch"
+];
+const fetchUrlsToUse = new Set(fetchUrlsToRead.concat(fetchUrlsToGetChannelIDs));
 
 // To not get update data for the current videoID, that is already
 // collected using other methods
@@ -177,18 +187,30 @@ function sendVideoData(): void {
 function onNewVideoIds(data: Record<string, unknown>) {
     sendMessage({
         type: "videoIDsLoaded",
-        videoIDs: Array.from(findAllVideoIds(data))
+        videoIDs: Array.from(findAllVideoIds(data, true))
+    });
+
+    onNewChannelIds(data);
+}
+
+function onNewChannelIds(data: Record<string, unknown>) {
+    sendMessage({
+        type: "channelIDsLoaded",
+        channelsPerVideo: Object.fromEntries(findAllChannelPerVideo(data))
     });
 }
 
-function findAllVideoIds(data: Record<string, unknown>): Set<string> {
+function findAllVideoIds(data: Record<string, unknown>, ignoreCurrentVideo: boolean): Set<string> {
     const videoIds: Set<string> = new Set();
     
     for (const key in data) {
-        if (key === "videoId") {
-            videoIds.add(data[key] as string);
-        } else if (typeof(data[key]) === "object" && !ytInfoKeysToIgnore.includes(key)) {
-            findAllVideoIds(data[key] as Record<string, unknown>).forEach(id => videoIds.add(id));
+        if (key === "videoId" || key === "contentId") {
+            const videoID = data[key] as string;
+            if (videoID && videoID.match(/.{11}/)) {
+                videoIds.add(videoID);
+            }
+        } else if (typeof(data[key]) === "object" && (!ignoreCurrentVideo || !ytInfoKeysToIgnore.includes(key))) {
+            findAllVideoIds(data[key] as Record<string, unknown>, ignoreCurrentVideo).forEach(id => videoIds.add(id));
         }
     }
 
@@ -332,7 +354,7 @@ export function init(): void {
     const browserFetch = window.fetch;
     savedSetup.browserFetch = browserFetch;
     window.fetch = (resource, init=undefined) => {
-        if (!(resource instanceof Request) || !fetchUrlsToRead.some(u => resource.url.includes(u))) {
+        if (!(resource instanceof Request) || ![...fetchUrlsToUse].some(u => resource.url.includes(u))) {
             return browserFetch(resource, init);
         }
 
@@ -347,13 +369,18 @@ export function init(): void {
         return new Promise(async (resolve, reject) => {
             try {
                 const response = await browserFetch(resource, init=init);
-                //   const url = new URL(resource.url);
                 const json = await response!.json();
 
                 // A new response has to be made because the body can only be read once
                 resolve(new Response(JSON.stringify(json), response!));
 
-                onNewVideoIds(json);
+                if (fetchUrlsToRead.some(u => resource.url.includes(u))) {
+                    onNewVideoIds(json);
+                } else if (fetchUrlsToGetChannelIDs.some(u => resource.url.includes(u))) {
+                    // Since the channel ID urls only contain more,
+                    //  if there was a url that is only for that only do the channel id check
+                    onNewChannelIds(json);
+                }
             } catch (e) {
                 reject(e);
             }
@@ -485,4 +512,78 @@ function createMutationObserver() {
             sendMessage({ type: "newElement", name });
         }
     }
+}
+
+function navigateJson(data: Record<string, unknown>, path: string): Record<string, unknown> | undefined {
+    if (path === "") return data;
+
+    let object: Record<string, unknown> = data;
+    for (const key of path.split(".")) {
+        // Path is allowed to start with a leading .
+        if (key === "") continue;
+
+        if (object && typeof(object) === "object") {
+            object = object[key] as Record<string, unknown>;
+        } else {
+            return undefined;
+        }
+    }
+
+    return object;
+}
+
+// To nearest object in an array
+function toNearestArray(path: string): string {
+    const beforeArray = path.match(/^(.+[0-9])[^0-9]+[0-9]?$/);
+    if (beforeArray) {
+        return beforeArray[1];
+    } else {
+        return "";
+    }
+}
+
+function findAllChannelPerVideo(data: Record<string, unknown>, path = "", videoToChannel?: Map<string, string | null>): Map<string, string | null> {
+    if (!videoToChannel) videoToChannel = new Map();
+    
+    const currentObject = navigateJson(data, path);
+    for (const key in currentObject) {
+        const currentValue = currentObject[key];
+
+        if (typeof(currentValue) === "string" && currentValue.match(/^UC.{22}$/)) {
+            const videoID = currentObject["videoId"] as string;
+            if (videoID) {
+                videoToChannel.set(videoID, currentValue as string);
+            } else {
+                // Try to go up to the nearest array
+                const videoIDs = findVideosInNearestArray(data, path, 1);
+                if (videoIDs && videoIDs.size === 1) {
+                    videoToChannel.set([...videoIDs][0], currentValue as string);
+                }
+            }
+        } else if (typeof(currentValue) === "object") {
+            findAllChannelPerVideo(data, `${path}.${key}`, videoToChannel);
+        }
+    }
+
+    return videoToChannel;
+}
+
+function findVideosInNearestArray(data: Record<string, unknown>, path: string, maxTries: number): Set<string> {
+    let beforeArrayPath = toNearestArray(path);
+    let tries = 0;
+    let result = new Set<string>();
+    while (result.size === 0 && beforeArrayPath && tries < maxTries) {
+        const beforeArray = navigateJson(data, beforeArrayPath);
+        if (beforeArray) {
+            result = findAllVideoIds(beforeArray, false);
+            if (result.size > 0) {
+                return result;
+            }
+        }
+
+        beforeArrayPath = toNearestArray(beforeArrayPath);
+        tries++;
+    }
+
+    return result;
 }

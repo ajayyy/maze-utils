@@ -635,6 +635,16 @@ export function setupMetadataOnRecieve() {
                 videoID: event.data.videoID,
                 callbacks: []
             });
+        } else if (event.data?.type === "channelIDsLoaded") {
+            // Save this data into the cache if sent
+            for (const videoID in event.data.channelsPerVideo) {
+                const channelID = event.data.channelsPerVideo[videoID];
+
+                if (channelID) {
+                    const cachedData = videoMetadataCache.setupCache(videoID as VideoID);
+                    cachedData.channelID = channelID;
+                }
+            }
         }
     };
 
@@ -1009,7 +1019,7 @@ async function doFetchOembed(videoID: VideoID): Promise<OembedData> {
         const body = await resp.text();
         throw new Error(`OEmbed request failed: Got response code ${resp.status} ${resp.statusText}${isBodyGarbage(body) ? "" : ` with body ${body}`}`);
     }
-    const data = await resp.json() as OembedData;
+    const data = structuredClone(await resp.json()) as OembedData;
     data.parsed = {
         channelHandle: null,
     }
@@ -1078,14 +1088,20 @@ export const resolveHandle = wrapMetadataFetcherFunction({
 })
 
 export function getUcidFromVideo(videoID: VideoID): PeekPromise<ChannelID | null> {
-    const entry = fetcherState.cache.chained.ucidFromVideo.setupCache(videoID);
-    entry.data ??= new PeekPromise((async () => {
-        const oembedData = await fetchOembed(videoID);
-        if (oembedData?.parsed.channelHandle == null) return null;
-        return await resolveHandle(oembedData.parsed.channelHandle);
-    })())
-    fetcherState.cache.chained.ucidFromVideo.cacheUsed(videoID);
-    return entry.data;
+    const cache = videoMetadataCache.getFromCache(videoID);
+    if (cache && cache.channelID) {
+        videoMetadataCache.cacheUsed(videoID);
+        return new PeekPromise(Promise.resolve(cache.channelID));
+    } else {
+        const entry = fetcherState.cache.chained.ucidFromVideo.setupCache(videoID);
+        entry.data ??= new PeekPromise((async () => {
+            const oembedData = await fetchOembed(videoID);
+            if (oembedData?.parsed.channelHandle == null) return null;
+            return await resolveHandle(oembedData.parsed.channelHandle);
+        })())
+        fetcherState.cache.chained.ucidFromVideo.cacheUsed(videoID);
+        return entry.data;
+    }
 }
 
 async function doFetchChannelName(ucid: ChannelID): Promise<string> {
