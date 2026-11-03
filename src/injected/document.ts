@@ -9,7 +9,7 @@ import { version } from "../version.json";
 import { YT_DOMAINS } from "../const";
 import { getThumbnailElementsToListenFor } from "../thumbnail-selectors";
 import { isOnV3Extension, onMobile, onYouTubeCableTV } from "../pageInfo";
-import { resetLastArtworkSrc, resetMediaSessionThumbnail, setMediaSessionInfo } from "./mediaSession";
+import { resetMediaSessionState, resetMediaSessionThumbnail, setMediaSessionInfo } from "./mediaSession";
 import { isVisible } from "../dom";
 
 interface StartMessage {
@@ -224,7 +224,7 @@ function windowMessageListener(message: MessageEvent) {
         } else if (message.data?.source === "dearrow-reset-media-session-thumbnail") {
             resetMediaSessionThumbnail();
         } else if (message.data?.source === "sb-reset-media-session-link") {
-            resetLastArtworkSrc();
+            resetMediaSessionState();
         } else if (message.data?.source === "sb-verify-time") {
             // If time is different and it is paused and no seek occurred since the message was sent
             const video = [...document.querySelectorAll("video")].filter((v) => isVisible(v))[0];
@@ -445,6 +445,8 @@ export function init(): void {
 }
 
 function teardown() {
+    resetMediaSessionState();
+
     document.removeEventListener("yt-player-updated", setupPlayerClient);
     document.removeEventListener("yt-navigate-start", navigationStartSend);
     document.removeEventListener("yt-navigate-finish", navigateFinishSend);
