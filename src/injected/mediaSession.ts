@@ -103,6 +103,11 @@ function copyMediaSession(): MediaMetadataInit {
     return copiedData;
 }
 
-export function resetLastArtworkSrc() {
+export function resetMediaSessionState() {
     lastArtworkSrc = null;
+    mediaSessionThumbnailData = null;
+    if (mediaSessionThumbnailWaitingTimeout) {
+        clearTimeout(mediaSessionThumbnailWaitingTimeout);
+        mediaSessionThumbnailWaitingTimeout = null;
+    }
 }
